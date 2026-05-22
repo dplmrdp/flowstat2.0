@@ -327,7 +327,7 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
       <div class="row">
         <div class="ig"><label>Competición</label><input class="field" id="pt-competicion" type="text" placeholder="Liga, Copa…"></div>
         <div class="ig"><label>Formato</label>
-          <select class="field" id="pt-formato"><option value="3">Mejor de 3</option><option value="5">Mejor de 5</option></select>
+          <select class="field" id="pt-formato"><option value="3">Mejor de 3</option><option value="5">Mejor de 5</option><option value="30">3 sets completos</option></select>
         </div>
       </div>
       <div class="row">
@@ -959,13 +959,26 @@ function undoLast(){
 
 function setServe(t){ state.serveTeam=state.serveTeam===t?null:t; document.getElementById('serve-us').classList.toggle('active',state.serveTeam==='us'); document.getElementById('serve-them').classList.toggle('active',state.serveTeam==='them'); saveLocal(); }
 
-function checkSetEnd(){ var u=state.scoreUs,t=state.scoreThem,pts=state.setNum===5?15:25; if(u>=pts&&u-t>=2)endSet(true); else if(t>=pts&&t-u>=2)endSet(false); }
+function isFixedSets(){ return state.format===30; }
+function totalSets(){ return isFixedSets()?3:state.format; }
+
+function checkSetEnd(){
+  var u=state.scoreUs,t=state.scoreThem,pts=state.setNum===5?15:25;
+  if(u>=pts&&u-t>=2) endSet(u>t);
+  else if(t>=pts&&t-u>=2) endSet(u>t);
+}
 
 function endSet(won){
   state.setHistory.push({us:state.scoreUs,them:state.scoreThem,won:won});
   if(won)state.setsUs++;else state.setsThem++;
   saveLocal();
-  var toWin=Math.ceil(state.format/2), over=state.setsUs>=toWin||state.setsThem>=toWin;
+  var ts=totalSets();
+  var toWin=Math.ceil(state.format/2);
+  // En formato fijos: termina solo cuando se han jugado todos los sets
+  // En formato normal: termina cuando alguien alcanza los sets necesarios
+  var over = isFixedSets()
+    ? (state.setsUs+state.setsThem >= ts)
+    : (state.setsUs>=toWin || state.setsThem>=toWin);
   document.getElementById('set-end-title').textContent=won?'🏆 ¡SET GANADO!':'💪 Set perdido';
   document.getElementById('set-end-body').textContent=state.scoreUs+'–'+state.scoreThem+' · Sets: '+state.setsUs+'–'+state.setsThem;
   document.getElementById('set-end-next').style.display=over?'none':'flex';
@@ -1024,7 +1037,7 @@ function updateMatchUI(){
   updateScoreUI();renderPlayerSelector();renderSetDots();
 }
 function updateScoreUI(){ document.getElementById('m-score-us').textContent=state.scoreUs;document.getElementById('m-score-them').textContent=state.scoreThem;document.getElementById('m-sets-us').textContent=state.setsUs;document.getElementById('m-sets-them').textContent=state.setsThem;renderSetDots(); }
-function renderSetDots(){ var h='';for(var i=0;i<state.format;i++)h+='<div class="sdot'+(i<state.setsUs?' won':'')+'"></div>';document.getElementById('m-set-dots').innerHTML=h; }
+function renderSetDots(){ var n=isFixedSets()?3:state.format; var h='';for(var i=0;i<n;i++)h+='<div class="sdot'+(i<state.setsUs?' won':'')+'"></div>';document.getElementById('m-set-dots').innerHTML=h; }
 
 function renderPlayerSelector(){
   var sel=document.getElementById('player-selector'); sel.innerHTML='';
