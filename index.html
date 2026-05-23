@@ -92,9 +92,9 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
 .stpanel{flex:1;overflow:hidden;padding:7px 10px 5px;display:flex;flex-direction:column;gap:5px}
 .sttitle{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-left:2px}
 .stgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
-.sbt{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:7px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;transition:background 0.15s,border-color 0.15s;-webkit-user-select:none;user-select:none}
+.sbt{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:5px 3px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;transition:background 0.15s,border-color 0.15s;-webkit-user-select:none;user-select:none}
 .sbt:active{transform:scale(0.93)}
-.sbt .si{font-size:17px;line-height:1}.sbt .sl{font-size:10px;font-weight:600;color:var(--muted);text-align:center;line-height:1.2}.sbt .sc{font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--text);line-height:1}
+.sbt .si{font-size:15px;line-height:1}.sbt .sl{font-size:9px;font-weight:600;color:var(--muted);text-align:center;line-height:1.2}.sbt .sc{font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--text);line-height:1}
 .sbt.pt{border-color:rgba(245,166,35,0.5)}.sbt.pt .sl{color:var(--accent)}
 .sbt.er{border-color:rgba(232,55,74,0.5)}.sbt.er .sl{color:var(--accent2)}
 @keyframes fpt{0%{background:rgba(245,166,35,0.35)}100%{background:var(--surface2)}}
@@ -203,15 +203,10 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
       <span class="svlabel">saque</span>
       <button class="svbtn" id="serve-them" onclick="setServe('them')">Ellas 🏐</button>
     </div>
-    <!-- Selector de sacadora (visible solo cuando saca nuestro equipo) -->
-    <div id="server-row" style="display:none;background:var(--surface);border-bottom:1px solid var(--border);padding:4px 10px 6px;flex-shrink:0">
-      <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Sacadora</div>
-      <div id="server-selector" style="display:flex;gap:5px;flex-wrap:wrap"></div>
-    </div>
   </div>
   <div class="psec">
     <div class="psec-hdr">
-      <div class="psec-lbl">Jugadora activa · <span style="color:var(--border)">mantén para fijar 📌</span></div>
+      <div class="psec-lbl" id="psec-label">Jugadora activa · <span style="color:var(--border)">mantén para fijar 📌</span></div>
       <button class="undo-btn" onclick="undoLast()">↩️ Deshacer</button>
     </div>
     <div class="pgrid" id="player-selector"></div>
@@ -226,10 +221,10 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
       <button class="sbt pt" onclick="logStat('tip')"><span class="si">🤙</span><span class="sl">Pto. Finta</span><span class="sc" id="cnt-tip">0</span></button>
     </div>
     <div class="sttitle">❌ Errores</div>
-    <div class="stgrid">
+    <div class="stgrid" style="grid-template-columns:repeat(4,1fr)">
       <button class="sbt er" onclick="logStat('serve_error')"><span class="si">🚫</span><span class="sl">F. Saque</span><span class="sc" id="cnt-serve_error">0</span></button>
       <button class="sbt er" onclick="logStat('reception_serve_error')"><span class="si">😬</span><span class="sl">F.Rec.Saque</span><span class="sc" id="cnt-reception_serve_error">0</span></button>
-      <button class="sbt er" onclick="logStat('reception_error')"><span class="si">🤦</span><span class="sl">F. Recepción</span><span class="sc" id="cnt-reception_error">0</span></button>
+      <button class="sbt er" onclick="logStat('reception_error')"><span class="si">🤦</span><span class="sl">F. Recep.</span><span class="sc" id="cnt-reception_error">0</span></button>
       <button class="sbt er" onclick="logStat('attack_error')"><span class="si">📉</span><span class="sl">F. Remate</span><span class="sc" id="cnt-attack_error">0</span></button>
       <button class="sbt er" onclick="logStat('net_fault')"><span class="si">🕸️</span><span class="sl">Falta red</span><span class="sc" id="cnt-net_fault">0</span></button>
       <button class="sbt er" onclick="logStat('blockout')"><span class="si">🏀</span><span class="sl">Blockout</span><span class="sc" id="cnt-blockout">0</span></button>
@@ -1056,136 +1051,70 @@ function setServe(t){
 }
 
 function updateServerRow(){
-  var row = document.getElementById('server-row');
-  row.style.display = state.serveTeam==='us' ? 'block' : 'none';
-  if(state.serveTeam==='us') renderServerSelector();
+  var lbl = document.getElementById('psec-label');
+  if(lbl){
+    if(state.serveTeam==='us')
+      lbl.innerHTML = '🏐 Toca para elegir sacadora · <span style="color:var(--border)">mantén=fijar</span>';
+    else
+      lbl.innerHTML = 'Jugadora activa · <span style="color:var(--border)">mantén para fijar 📌</span>';
+  }
+  renderPlayerSelector();
 }
 
-function renderServerSelector(){
-  var sel = document.getElementById('server-selector');
-  sel.innerHTML = '';
-  state.onCourt.forEach(function(jid){
-    var j = conv.find(function(x){return x.jugadora_id===jid;}); if(!j) return;
-    var btn = document.createElement('button');
-    var isActive = state.currentServer === jid;
-    var posCol = j.posicion ? 'var(--pos-'+j.posicion+')' : 'var(--accent)';
-    btn.style.cssText = 'padding:4px 8px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid '
-      +(isActive ? posCol+';background:rgba(245,166,35,0.15);color:'+posCol : 'var(--border)+";background:var(--surface);color:var(--muted)"');
-    btn.style.border = '1.5px solid '+(isActive ? posCol : 'var(--border)');
-    btn.style.background = isActive ? 'rgba(245,166,35,0.12)' : 'var(--surface)';
-    btn.style.color = isActive ? posCol : 'var(--muted)';
-    btn.textContent = '#'+(j.dorsal||'—')+' '+(j.alias||j.nombre.split(' ')[0]);
-    if(isActive) btn.textContent = '🏐 ' + btn.textContent;
-    (function(jid){ btn.onclick = function(){ state.currentServer = state.currentServer===jid ? null : jid; renderServerSelector(); saveLocal(); }; })(jid);
-    sel.appendChild(btn);
-  });
-}
-
-function isFixedSets(){ return state.format===30; }
-function totalSets(){ return isFixedSets()?3:state.format; }
-
-function checkSetEnd(){
-  var u=state.scoreUs,t=state.scoreThem,pts=state.setNum===5?15:25;
-  if(u>=pts&&u-t>=2) endSet(u>t);
-  else if(t>=pts&&t-u>=2) endSet(u>t);
-}
-
-function endSet(won){
-  state.setHistory.push({us:state.scoreUs,them:state.scoreThem,won:won});
-  if(won)state.setsUs++;else state.setsThem++;
-  saveLocal();
-  var ts=totalSets();
-  var toWin=Math.ceil(state.format/2);
-  // En formato fijos: termina solo cuando se han jugado todos los sets
-  // En formato normal: termina cuando alguien alcanza los sets necesarios
-  var over = isFixedSets()
-    ? (state.setsUs+state.setsThem >= ts)
-    : (state.setsUs>=toWin || state.setsThem>=toWin);
-  document.getElementById('set-end-title').textContent=won?'🏆 ¡SET GANADO!':'💪 Set perdido';
-  document.getElementById('set-end-body').textContent=state.scoreUs+'–'+state.scoreThem+' · Sets: '+state.setsUs+'–'+state.setsThem;
-  document.getElementById('set-end-next').style.display=over?'none':'flex';
-  document.getElementById('set-end-finish').textContent=over?'🎉 VER RESUMEN':'Terminar partido';
-  document.getElementById('modal-set-end').style.display='flex';
-  state.matchOver=true;
-  document.getElementById('set-end-next').onclick=function(){document.getElementById('modal-set-end').style.display='none';nextSet();};
-  document.getElementById('set-end-finish').onclick=function(){document.getElementById('modal-set-end').style.display='none';finishMatch();};
-}
-
-function endSetManual(){ if(!state.scoreUs&&!state.scoreThem){showToast('Registra alguna acción primero');return;} endSet(state.scoreUs>state.scoreThem); }
-
-function nextSet(){
-  var prevCourt=state.onCourt.slice(); // guardar las 6 del set anterior
-  state.setNum++;state.scoreUs=0;state.scoreThem=0;state.matchOver=false;
-  state.pinnedPlayer=null;state.activePlayer=null;state.serveTeam=null;
-  var sn=state.setNum;
-  state.statsBySet[sn]={};state.teamStatsBySet[sn]={rival_error:0,general_error:0};
-  conv.forEach(function(j){state.statsBySet[sn][j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0};});
-  Object.keys(META).forEach(function(k){var el=document.getElementById('cnt-'+k);if(el)el.textContent='0';});
-  document.getElementById('serve-us').classList.remove('active');document.getElementById('serve-them').classList.remove('active');
-  saveLocal();updateMatchUI();
-  // Abrir pantalla de cambio con las 6 del set anterior preseleccionadas
-  openSubForLineup(prevCourt);
-}
-
-async function finishMatch(){
-  try{
-    var rj=[]; conv.forEach(function(j){ var s=state.stats[j.jugadora_id]||{}; Object.keys(s).forEach(function(t){if(s[t]>0)rj.push({partido_id:state.partidoId,jugadora_id:j.jugadora_id,tipo:t,cantidad:s[t]});}); });
-    var re=[]; Object.keys(state.teamStats).forEach(function(t){if(state.teamStats[t]>0)re.push({partido_id:state.partidoId,tipo:t,cantidad:state.teamStats[t]});});
-    await db.saveStats(rj,re); await db.updateResult(state.partidoId,state.setsUs,state.setsThem);
-    var i=allP.findIndex(function(x){return x.id===state.partidoId;}); if(i>=0){allP[i].sets_ganados=state.setsUs;allP[i].sets_perdidos=state.setsThem;allP[i].completado=true;}
-    clearLocal(); showToast('✅ Partido guardado');
-  }catch(e){showToast('⚠️ Sin conexión — datos locales');}
-  renderPartidos(); renderEquipos();
-  // Ir a consulta con el partido recién terminado
-  openConsulta('partido');
-  setTimeout(async function(){
-    var sel=document.getElementById('c-partido-sel');
-    if(sel && state.partidoId){ sel.value=state.partidoId; await onConsultaPartidoChange(); }
-  },100);
-  // Mostrar botón de volver al menú
-  var bk=document.createElement('button'); bk.className='big-btn sec';
-  bk.style.cssText='margin:12px 16px;font-size:16px;padding:11px;width:calc(100% - 32px)';
-  bk.textContent='← VOLVER AL MENÚ';
-  bk.onclick=function(){ bk.remove(); switchScreen('hub'); };
-  setTimeout(function(){ var b=document.getElementById('consulta-body'); if(b) b.appendChild(bk); },400);
-}
-
-// ══════════════════════════════════════
-// UI PARTIDO
-// ══════════════════════════════════════
-function updateMatchUI(){
-  document.getElementById('m-team-name').textContent=state.teamName;
-  document.getElementById('m-rival-name').textContent=state.rivalName;
-  document.getElementById('m-set-num').textContent=state.setNum;
-  document.getElementById('serve-us').classList.toggle('active',state.serveTeam==='us');
-  document.getElementById('serve-them').classList.toggle('active',state.serveTeam==='them');
-  updateScoreUI();renderPlayerSelector();renderSetDots();updateServerRow();
-}
-function updateScoreUI(){ document.getElementById('m-score-us').textContent=state.scoreUs;document.getElementById('m-score-them').textContent=state.scoreThem;document.getElementById('m-sets-us').textContent=state.setsUs;document.getElementById('m-sets-them').textContent=state.setsThem;renderSetDots(); }
-function renderSetDots(){ var n=isFixedSets()?3:state.format; var h='';for(var i=0;i<n;i++)h+='<div class="sdot'+(i<state.setsUs?' won':'')+'"></div>';document.getElementById('m-set-dots').innerHTML=h; }
+function renderServerSelector(){ renderPlayerSelector(); }
 
 function renderPlayerSelector(){
   var sel=document.getElementById('player-selector'); sel.innerHTML='';
+  var serveMode = state.serveTeam==='us';
   state.onCourt.forEach(function(jid){
-    var j=conv.find(function(x){return x.jugadora_id===jid;});if(!j)return;
-    var pinned=state.pinnedPlayer===jid, selected=state.activePlayer===jid;
-    var posCol=j.posicion?'var(--pos-'+j.posicion+')':'var(--accent)';
+    var j=conv.find(function(x){return x.jugadora_id===jid;}); if(!j) return;
+    var pinned   = !serveMode && state.pinnedPlayer===jid;
+    var selected = !serveMode && state.activePlayer===jid;
+    var isServer = serveMode && state.currentServer===jid;
+    var posCol   = j.posicion?'var(--pos-'+j.posicion+')':'var(--accent)';
+
     var tile=document.createElement('div');
-    tile.className='ptile'+(pinned?' pinned':(selected?' sel':''));
-    if(pinned) posCol='var(--purple)';
-    tile.innerHTML='<span class="pnum" style="color:'+posCol+'">#'+(j.dorsal||'—')+'</span>'
+    if(isServer)       tile.className='ptile pinned';
+    else if(pinned)    tile.className='ptile pinned';
+    else if(selected)  tile.className='ptile sel';
+    else               tile.className='ptile';
+
+    var numColor = isServer ? 'var(--green)' : (pinned ? 'var(--purple)' : posCol);
+    var posAbbr  = j.posicion ? (POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase() : '';
+    tile.innerHTML =
+      (isServer ? '<span style="font-size:9px;position:absolute;top:2px;left:3px">🏐</span>' : '')
+      +'<span class="pnum" style="color:'+numColor+'">#'+(j.dorsal||'—')+'</span>'
       +'<span class="pnm">'+(j.alias||j.nombre.split(' ')[0])+'</span>'
-      +(j.posicion?'<span style="font-size:8px;color:'+posCol+';font-weight:700;opacity:0.8;letter-spacing:0.3px">'+(POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase()+'</span>':'');
-    (function(jid,tile,pinned){
-      tile.onclick=function(){if(pinned){state.pinnedPlayer=null;state.activePlayer=null;}else state.activePlayer=state.activePlayer===jid?null:jid;renderPlayerSelector();};
+      +(posAbbr?'<span style="font-size:8px;color:'+numColor+';font-weight:700;opacity:0.8;letter-spacing:0.3px">'+posAbbr+'</span>':'');
+
+    (function(jid, pinned){
+      tile.onclick = function(){
+        if(serveMode){
+          state.currentServer = state.currentServer===jid ? null : jid;
+          renderPlayerSelector(); saveLocal();
+        } else {
+          if(pinned){ state.pinnedPlayer=null; state.activePlayer=null; }
+          else state.activePlayer = state.activePlayer===jid ? null : jid;
+          renderPlayerSelector();
+        }
+      };
       var pt=null;
-      tile.addEventListener('pointerdown',function(){pt=setTimeout(function(){pt=null;state.pinnedPlayer=pinned?null:jid;state.activePlayer=state.pinnedPlayer;renderPlayerSelector();if(navigator.vibrate)navigator.vibrate(40);},500);});
+      tile.addEventListener('pointerdown',function(){
+        pt=setTimeout(function(){
+          pt=null;
+          if(!serveMode){
+            state.pinnedPlayer=pinned?null:jid; state.activePlayer=state.pinnedPlayer;
+            renderPlayerSelector(); if(navigator.vibrate)navigator.vibrate(40);
+          }
+        },500);
+      });
       tile.addEventListener('pointerup',function(){clearTimeout(pt);});
       tile.addEventListener('pointerleave',function(){clearTimeout(pt);});
-    })(jid,tile,pinned);
+    })(jid, pinned);
     sel.appendChild(tile);
   });
 }
+
 
 // ══════════════════════════════════════
 // CAMBIO
