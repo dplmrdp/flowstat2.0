@@ -215,7 +215,14 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
       <div class="psec-lbl" id="psec-label">Jugadora activa · <span style="color:var(--border)">mantén para fijar 📌</span></div>
       <button class="undo-btn" onclick="undoLast()">↩️ Deshacer</button>
     </div>
-    <div class="pgrid" id="player-selector"></div>
+    <div id="court-field" style="padding:0 6px">
+      <div class="pgrid" id="front-row" style="margin-bottom:3px"></div>
+      <div class="pgrid" id="back-row"></div>
+      <div style="display:flex;justify-content:flex-end;gap:5px;margin-top:4px">
+        <button onclick="rotateManual(-1)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 8px;cursor:pointer">◀ Rotar</button>
+        <button onclick="rotateManual(1)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 8px;cursor:pointer">Rotar ▶</button>
+      </div>
+    </div>
   </div>
   <div class="stpanel" id="stat-panel">
     <div class="sttitle">⚡ Puntos en ataque</div>
@@ -240,7 +247,6 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
   <div class="botbar">
     <button class="botbtn bl" onclick="openSub()">🔄 Cambio</button>
     <button class="botbtn gn" onclick="showStats()">📊 Stats</button>
-    <button class="botbtn pp" onclick="openRosterModal()">👥 Conv.</button>
     <button class="botbtn" id="timeout-btn" onclick="callTimeout()" style="color:var(--accent2);border-color:rgba(232,55,74,0.3)">⏱️ T.Muerto</button>
     <button class="botbtn" onclick="endSetManual()">Set →</button>
   </div>
@@ -552,10 +558,12 @@ function posBadge(pos,small){ return pos?'<span class="badge bpos" data-p="'+pos
 function mkState(){
   return {
     partidoId:null,teamName:'',rivalName:'',format:3,categoria:null,
+    rotation:[],        // [pos1_id, pos2_id, pos3_id, pos4_id, pos5_id, pos6_id]
+    liberoId:null,      // jugadora_id de la libero (si aplica)
+    liberoSubId:null,   // central actualmente fuera (sustituido por libero)
     onCourt:[],activePlayer:null,pinnedPlayer:null,serveTeam:null,
     currentServer:null,
-    afterTimeout:false, // flag: próximo saque es post tiempo muerto
-    timeouts:0,         // nº de tiempos muertos pedidos
+    afterTimeout:false,timeouts:0,
     setNum:1,setsUs:0,setsThem:0,scoreUs:0,scoreThem:0,
     setHistory:[],stats:{},statsBySet:{},
     teamStats:{rival_error:0,general_error:0},teamStatsBySet:{},
@@ -1014,14 +1022,19 @@ function logStat(type){
   // ── Cambio automático de saque ──
   if(meta.point){
     if(!meta.us){
-      // Rival gana → ellas sacan, limpiar todo
+      // Rival gana → ellas sacan, limpiar sacadora
       state.serveTeam = 'them';
       state.currentServer = null;
     } else {
-      // Nosotras ganamos → misma sacadora sigue
-      // No tocar currentServer ni activar modo selección
-      // Solo asegurarse de que serveTeam no esté en 'them'
-      state.serveTeam = null; // modo neutral — sacadora ya está en currentServer
+      // Nosotras ganamos → misma sacadora sigue (o si veníamos de ellas, rotar)
+      if(state.serveTeam==='them'){
+        // Recuperamos el saque → ROTAR
+        if(state.rotation.length) rotate(1);
+        else state.serveTeam='us'; // sin rotación definida
+      } else {
+        // Ya sacábamos → misma sacadora continúa
+        state.serveTeam = null;
+      }
     }
     document.getElementById('serve-us').classList.toggle('active', !!state.currentServer && !state.serveTeam);
     document.getElementById('serve-them').classList.toggle('active', state.serveTeam==='them');
@@ -1115,44 +1128,45 @@ function setModoRally(){
 function renderServerSelector(){ renderPlayerSelector(); }
 
 function renderPlayerSelector(){
-  var sel=document.getElementById('player-selector'); sel.innerHTML='';
-  // Adapt grid columns: 3 for 6 players, 4 for 7
-  sel.style.gridTemplateColumns = courtSize()===7 ? 'repeat(4,1fr)' : 'repeat(3,1fr)';
+  var frontRow = document.getElementById('front-row');
+  var backRow  = document.getElementById('back-row');
+  if(!frontRow || !backRow) return;
+  frontRow.innerHTML=''; backRow.innerHTML='';
   var serveMode = state.serveTeam==='us';
-  state.onCourt.forEach(function(jid){
-    var j=conv.find(function(x){return x.jugadora_id===jid;}); if(!j) return;
+  var rot = state.rotation;
+  var frontPos = rot.length>=4 ? [rot[3],rot[2],rot[1]] : [];
+  var backPos  = rot.length>=6 ? [rot[4],rot[5],rot[0]] : [];
+  function makeTile(jid, posNum, container){
+    var j=conv.find(function(x){return x.jugadora_id===jid;});
+    if(!j){ var emp=document.createElement('div'); emp.className='ptile'; emp.style.opacity='0.15'; container.appendChild(emp); return; }
     var pinned   = !serveMode && state.pinnedPlayer===jid;
     var selected = !serveMode && state.activePlayer===jid;
-    var isServer = serveMode && state.currentServer===jid;
+    var isServer = state.currentServer===jid;
+    var isLibero = state.liberoId===jid;
     var posCol   = j.posicion?'var(--pos-'+j.posicion+')':'var(--accent)';
-
     var tile=document.createElement('div');
-    if(isServer)       tile.className='ptile pinned';
-    else if(pinned)    tile.className='ptile pinned';
-    else if(selected)  tile.className='ptile sel';
-    else               tile.className='ptile';
-
-    var numColor = isServer ? 'var(--green)' : (pinned ? 'var(--purple)' : posCol);
-    var posAbbr  = j.posicion ? (POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase() : '';
+    tile.className = (isServer||pinned)?'ptile pinned':selected?'ptile sel':'ptile';
+    if(isLibero) tile.style.borderStyle='dashed';
+    var numColor = isServer?'var(--green)':(pinned?'var(--purple)':posCol);
+    var posAbbr  = j.posicion?(POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase():'';
     tile.innerHTML =
-      (isServer ? '<span style="font-size:9px;position:absolute;top:2px;left:3px">🏐</span>' : '')
+      (isServer?'<span style="font-size:9px;position:absolute;top:2px;left:3px">🏐</span>':'')
+      +'<span style="font-size:8px;color:var(--border);position:absolute;top:2px;right:3px;font-weight:700">'+posNum+'</span>'
       +'<span class="pnum" style="color:'+numColor+'">#'+(j.dorsal||'—')+'</span>'
       +'<span class="pnm">'+(j.alias||j.nombre.split(' ')[0])+'</span>'
-      +(posAbbr?'<span style="font-size:8px;color:'+numColor+';font-weight:700;opacity:0.8;letter-spacing:0.3px">'+posAbbr+'</span>':'');
-
-    (function(jid, pinned){
-      tile.onclick = function(){
+      +(posAbbr?'<span style="font-size:8px;color:'+numColor+';font-weight:700;opacity:0.8">'+posAbbr+'</span>':'');
+    (function(jid,pinned){
+      tile.onclick=function(){
         if(serveMode){
-          // Seleccionar sacadora → salir inmediatamente del modo saque
-          state.currentServer = state.currentServer===jid ? null : jid;
-          state.serveTeam = null; // volver siempre a modo registro
-          document.getElementById('serve-us').classList.toggle('active', !!state.currentServer);
+          state.currentServer=state.currentServer===jid?null:jid;
+          state.serveTeam=null;
+          document.getElementById('serve-us').classList.toggle('active',!!state.currentServer);
           document.getElementById('serve-them').classList.remove('active');
-          document.getElementById('en-juego-bar').style.display = 'none';
+          document.getElementById('en-juego-bar').style.display='none';
           updateServerRow(); updateStatPanel(); saveLocal();
         } else {
-          if(pinned){ state.pinnedPlayer=null; state.activePlayer=null; }
-          else state.activePlayer = state.activePlayer===jid ? null : jid;
+          if(pinned){state.pinnedPlayer=null;state.activePlayer=null;}
+          else state.activePlayer=state.activePlayer===jid?null:jid;
           renderPlayerSelector();
         }
       };
@@ -1160,19 +1174,152 @@ function renderPlayerSelector(){
       tile.addEventListener('pointerdown',function(){
         pt=setTimeout(function(){
           pt=null;
-          if(!serveMode){
-            state.pinnedPlayer=pinned?null:jid; state.activePlayer=state.pinnedPlayer;
-            renderPlayerSelector(); if(navigator.vibrate)navigator.vibrate(40);
-          }
+          if(!serveMode){state.pinnedPlayer=pinned?null:jid;state.activePlayer=state.pinnedPlayer;renderPlayerSelector();if(navigator.vibrate)navigator.vibrate(40);}
         },500);
       });
       tile.addEventListener('pointerup',function(){clearTimeout(pt);});
       tile.addEventListener('pointerleave',function(){clearTimeout(pt);});
-    })(jid, pinned);
-    sel.appendChild(tile);
-  });
+    })(jid,pinned);
+    container.appendChild(tile);
+  }
+  [4,3,2].forEach(function(p,i){ makeTile(frontPos[i],p,frontRow); });
+  [5,6,1].forEach(function(p,i){ makeTile(backPos[i], p,backRow); });
 }
 
+
+// ══════════════════════════════════════
+// ROTACIÓN Y CAMPO
+// ══════════════════════════════════════
+
+// Inicializar rotación al empezar set
+// rotation = array de 6 ids, índice 0=pos1 ... 5=pos6
+function initRotation(courtIds){
+  // courtIds: array de jugadora_ids en el orden que el usuario eligió (pos1..pos6)
+  // Detectar líbero
+  state.liberoId = null; state.liberoSubId = null;
+  if(courtSize()===7){
+    var libJ = conv.find(function(j){ return j.posicion==='libero' && courtIds.includes(j.jugadora_id); });
+    if(libJ) state.liberoId = libJ.jugadora_id;
+  }
+  // Si hay líbero, la rotación son los 6 de campo (sin líbero)
+  // El líbero empieza en posición 1 o 5 o 6 según corresponda
+  state.rotation = courtIds.slice(0,6);
+  applyLibero();
+  syncOnCourtFromRotation();
+}
+
+// Aplicar sustitución del líbero según posición actual
+function applyLibero(){
+  if(!state.liberoId) return;
+  var rot = state.rotation;
+  // Posiciones de segunda línea: índices 0(pos1), 4(pos5), 5(pos6)
+  var backIdx = [0,4,5];
+  // Buscar si hay un central en segunda línea
+  var centralEnSegunda = null, centralIdx = -1;
+  backIdx.forEach(function(idx){
+    var jid = rot[idx];
+    var j = conv.find(function(x){return x.jugadora_id===jid;});
+    if(j && j.posicion==='central'){
+      centralEnSegunda = jid; centralIdx = idx;
+    }
+  });
+  if(centralEnSegunda && centralIdx >= 0){
+    // Líbero entra sustituyendo al central
+    if(state.liberoSubId === null) state.liberoSubId = centralEnSegunda;
+    state.rotation = rot.slice();
+    state.rotation[centralIdx] = state.liberoId;
+  } else {
+    // Central en primera línea → líbero fuera, volver a poner el central que salió
+    if(state.liberoSubId){
+      state.rotation = rot.slice();
+      // Encontrar si el líbero está en la rotación y sacarle
+      var liIdx = state.rotation.indexOf(state.liberoId);
+      if(liIdx >= 0) state.rotation[liIdx] = state.liberoSubId;
+      // Si el central rotó a pos1 para sacar, líbero vuelve a entrar
+      // (esto se maneja en rotate() )
+    }
+  }
+}
+
+// Rotar: dir=1 (recuperar saque, rot estándar) o dir=-1 (rotar atrás)
+function rotate(dir){
+  if(!state.rotation.length) return;
+  var r = state.rotation.slice();
+  if(dir===1){
+    // Rotación antihoraria (recuperar saque): 2→1, 3→2, 4→3, 5→4, 6→5, 1→6
+    // En array (índice 0=pos1): pos[1]→pos[0], pos[2]→pos[1],..., pos[0]→pos[5]
+    var first = r[0];
+    r[0]=r[1]; r[1]=r[2]; r[2]=r[3]; r[3]=r[4]; r[4]=r[5]; r[5]=first;
+  } else {
+    // Rotación horaria (manual inversa): 1→2, 2→3, etc.
+    var last = r[5];
+    r[5]=r[4]; r[4]=r[3]; r[3]=r[2]; r[2]=r[1]; r[1]=r[0]; r[0]=last;
+  }
+  state.rotation = r;
+  if(state.liberoId) updateLiberoAfterRotation();
+  syncOnCourtFromRotation();
+  // La jugadora en pos1 (índice 0) es la sacadora
+  state.currentServer = state.rotation[0];
+  state.serveTeam = null;
+  document.getElementById('serve-us').classList.add('active');
+  document.getElementById('serve-them').classList.remove('active');
+  saveLocal();
+}
+
+function updateLiberoAfterRotation(){
+  var rot = state.rotation;
+  var backIdx = [0,4,5]; // pos1, pos5, pos6
+  var frontIdx = [1,2,3]; // pos2, pos3, pos4
+  // ¿Hay central en segunda línea? → líbero entra
+  // ¿Hay central en primera línea y líbero en rotación? → líbero sale
+  var lieroEnRot = rot.indexOf(state.liberoId);
+  var subEnRot   = state.liberoSubId ? rot.indexOf(state.liberoSubId) : -1;
+
+  // Buscar central en segunda línea (excluyendo al líbero)
+  var centralBack = -1;
+  backIdx.forEach(function(idx){
+    var j=conv.find(function(x){return x.jugadora_id===rot[idx];});
+    if(j && j.posicion==='central') centralBack=idx;
+  });
+
+  // Buscar si el central sustituido está en primera línea
+  var centralFront = -1;
+  if(state.liberoSubId){
+    frontIdx.forEach(function(idx){
+      if(rot[idx]===state.liberoSubId) centralFront=idx;
+    });
+  }
+
+  if(centralBack>=0){
+    // Central en segunda → líbero entra
+    var newCentral = rot[centralBack];
+    var newRot = rot.slice();
+    newRot[centralBack] = state.liberoId;
+    if(lieroEnRot>=0 && lieroEnRot!==centralBack) newRot[lieroEnRot]=newCentral;
+    state.liberoSubId = newCentral;
+    state.rotation = newRot;
+  } else if(centralFront>=0 && lieroEnRot>=0){
+    // Central en primera línea, líbero fuera (vuelve el central)
+    // No hacer nada aquí, ya está en rotación el central correcto
+  }
+}
+
+function rotateManual(dir){
+  rotate(dir);
+  renderPlayerSelector();
+  updateServerRow();
+  updateStatPanel();
+  showToast(dir===1?'▶ Rotación adelante':'◀ Rotación atrás');
+}
+
+// Sincronizar onCourt desde rotation (los que están en campo)
+function syncOnCourtFromRotation(){
+  if(!state.rotation.length) return;
+  var inCourt = state.rotation.slice();
+  // Añadir líbero si está en rotación actual
+  // (ya está incluido en rotation si applyLibero lo puso)
+  state.onCourt = inCourt.filter(function(id){ return !!id; });
+}
 
 // ══════════════════════════════════════
 // CAMBIO
@@ -1244,9 +1391,26 @@ function applySub(){
   state.onCourt=pendCourt.slice();
   if(!state.onCourt.includes(state.activePlayer))state.activePlayer=null;
   if(!state.onCourt.includes(state.pinnedPlayer))state.pinnedPlayer=null;
+  if(subMode==='lineup'){
+    // Inicializar rotación con el orden elegido
+    // Para 7 jugadoras: excluir la líbero del orden base (ella se gestiona aparte)
+    var baseOrder = pendCourt.slice();
+    if(courtSize()===7){
+      var libJ = conv.find(function(j){return j.posicion==='libero' && baseOrder.includes(j.jugadora_id);});
+      if(libJ){
+        // Poner la líbero en pos5 o pos6, la posición 1 la ocupa la primera no-líbero
+        baseOrder = baseOrder.filter(function(id){return id!==libJ.jugadora_id;});
+        baseOrder.splice(4,0,libJ.jugadora_id); // insertar en pos5 (índice 4)
+      }
+    }
+    initRotation(baseOrder);
+    showToast('✅ Alineación set '+state.setNum);
+  } else {
+    showToast('✅ Cambio aplicado');
+  }
   renderPlayerSelector();
-  if(subMode==='lineup') showToast('✅ Alineación set '+state.setNum);
-  else showToast('✅ Cambio aplicado');
+  updateServerRow();
+  updateStatPanel();
   switchScreen('match');
 }
 
