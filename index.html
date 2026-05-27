@@ -1014,17 +1014,16 @@ function logStat(type){
   // ── Cambio automático de saque ──
   if(meta.point){
     if(!meta.us){
-      // Rival gana el punto → ellas sacan, limpiar sacadora
+      // Rival gana → ellas sacan, limpiar todo
       state.serveTeam = 'them';
       state.currentServer = null;
     } else {
-      // Nosotras ganamos el punto → seguimos sacando
-      // Si ya había sacadora elegida, la mantenemos (sigue sacando ella)
-      // Si no había sacadora, pedir que se elija
-      state.serveTeam = 'us';
-      // currentServer se mantiene si ya estaba definido
+      // Nosotras ganamos → misma sacadora sigue
+      // No tocar currentServer ni activar modo selección
+      // Solo asegurarse de que serveTeam no esté en 'them'
+      state.serveTeam = null; // modo neutral — sacadora ya está en currentServer
     }
-    document.getElementById('serve-us').classList.toggle('active', state.serveTeam==='us');
+    document.getElementById('serve-us').classList.toggle('active', !!state.currentServer && !state.serveTeam);
     document.getElementById('serve-them').classList.toggle('active', state.serveTeam==='them');
     updateServerRow();
     updateStatPanel();
@@ -1090,11 +1089,13 @@ function setServe(t){
 function updateServerRow(){
   var lbl = document.getElementById('psec-label');
   if(!lbl) return;
-  if(state.serveTeam==='us'){
+  if(state.serveTeam==='us' && !state.currentServer){
+    // Modo selección activo — pedir sacadora
     lbl.innerHTML = '🏐 <b style="color:var(--accent)">Toca quién saca</b> y vuelves al registro';
   } else if(state.currentServer){
+    // Sacadora definida — mostrar quién saca, modo registro normal
     var srv = conv.find(function(x){return x.jugadora_id===state.currentServer;});
-    lbl.innerHTML = '🏐 Saca <b style="color:var(--green)">'+(srv?srv.alias||srv.nombre:'—')+'</b> · 🏐 Nosotras para cambiar';
+    lbl.innerHTML = '🏐 Saca <b style="color:var(--green)">'+(srv?srv.alias||srv.nombre:'—')+'</b> · pulsa 🏐 Nosotras para cambiar';
   } else {
     lbl.innerHTML = 'Jugadora activa · <span style="color:var(--border)">mantén para fijar 📌</span>';
   }
@@ -1639,15 +1640,30 @@ async function renderConsultaPartido(){
         +'</div></div>';
     });
 
-    // Sets si hay historial
-    if(hasSetData && setFilter==='all' && state.setHistory && state.setHistory.length){
+    // Sets si hay historial en BD (filas con set_num > 0)
+    var setsEnBD = new Set();
+    sj.filter(function(s){return s.set_num>0;}).forEach(function(s){setsEnBD.add(s.set_num);});
+    var haySets = setsEnBD.size > 1 && setFilter==='all';
+    if(haySets){
       html += '<div class="stitle" style="padding:12px 0 6px">Por set</div>';
-      state.setHistory.forEach(function(sh,i){
-        var sn=i+1, ss=state.statsBySet[sn]||{};
-        var top=jugadoras.map(function(j){var ps=ss[j.jugadora_id]||{};return {n:j.alias||j.nombre.split(' ')[0],p:(ps.kill||0)+(ps.ace||0)+(ps.block||0)+(ps.tip||0)};}).filter(function(x){return x.p>0;}).sort(function(a,b){return b.p-a.p;}).slice(0,4);
-        html+='<div class="stcard"><div style="display:flex;align-items:center;justify-content:space-between'+(top.length?';margin-bottom:6px':'')+'">'
-          +'<span style="font-weight:700">Set '+sn+'</span><span style="font-family:\'Bebas Neue\',sans-serif;font-size:22px">'+sh.us+'–'+sh.them+'</span>'
-          +'<span style="color:'+(sh.won?'var(--green)':'var(--accent2)')+';font-size:12px;font-weight:700">'+(sh.won?'✓ Ganado':'✗ Perdido')+'</span></div>'
+      Array.from(setsEnBD).sort().forEach(function(sn){
+        var sjSet = sj.filter(function(s){return s.set_num===sn;});
+        var seSet = se.filter(function(s){return s.set_num===sn;});
+        // Totales del set
+        var tsSet={};
+        jugadoras.forEach(function(j){tsSet[j.jugadora_id]={};});
+        sjSet.forEach(function(s){if(!tsSet[s.jugadora_id])tsSet[s.jugadora_id]={};tsSet[s.jugadora_id][s.tipo]=(tsSet[s.jugadora_id][s.tipo]||0)+s.cantidad;});
+        var top=jugadoras.map(function(j){
+          var ps=tsSet[j.jugadora_id]||{};
+          return {n:j.alias||j.nombre.split(' ')[0],p:(ps.kill||0)+(ps.ace||0)+(ps.block||0)+(ps.tip||0)};
+        }).filter(function(x){return x.p>0;}).sort(function(a,b){return b.p-a.p;}).slice(0,4);
+        var rivalErr=(seSet.find(function(s){return s.tipo==='rival_error';})||{}).cantidad||0;
+        var ptsSet=top.reduce(function(acc,x){return acc+x.p;},0)+rivalErr;
+        html+='<div class="stcard">'
+          +'<div style="display:flex;align-items:center;justify-content:space-between'+(top.length?';margin-bottom:6px':'')+'">'
+          +'<span style="font-weight:700">Set '+sn+'</span>'
+          +'<span style="font-size:12px;color:var(--muted)">'+ptsSet+' puntos</span>'
+          +'</div>'
           +(top.length?'<div style="display:flex;gap:10px;flex-wrap:wrap">'+top.map(function(x){return '<span style="font-size:11px;color:var(--muted)">'+x.n+' <b style="color:var(--text)">'+x.p+'p</b></span>';}).join('')+'</div>':'')
           +'</div>';
       });
