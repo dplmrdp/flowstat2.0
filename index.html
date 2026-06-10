@@ -161,7 +161,8 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
   <div class="hub-tabs">
     <div class="hub-tab active" data-tab="tab-equipos">Equipos</div>
     <div class="hub-tab" data-tab="tab-jugadoras">Jugadoras</div>
-    <div class="hub-tab" data-tab="tab-partidos">Partidos</div>
+    <div class="hub-tab" data-tab="tab-partidos">Indoor</div>
+    <div class="hub-tab" data-tab="tab-playa">🏖️ Playa</div>
   </div>
   <div id="tab-equipos" class="hub-pane active">
     <div class="hub-ph"><span class="stitle" style="margin:0">Mis equipos</span><button class="hub-add" onclick="openModalEquipo(null)">+ Nuevo</button></div>
@@ -186,6 +187,16 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
       </div>
     </div>
     <div id="lista-partidos"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+  <div id="tab-playa" class="hub-pane">
+    <div class="hub-ph">
+      <span class="stitle" style="margin:0">Vóley Playa</span>
+      <div style="display:flex;gap:6px">
+        <button class="hub-add" style="background:var(--blue);color:#0a0e1a" onclick="openConsulta('partido','playa')">📊 Consultar</button>
+        <button class="hub-add" onclick="openModalPartidoPlaya(null)">+ Nuevo</button>
+      </div>
+    </div>
+    <div id="lista-playa"><div class="loading"><div class="spinner"></div></div></div>
   </div>
 </div>
 
@@ -453,6 +464,55 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
   </div>
 </div>
 
+<!-- MODAL: PARTIDO PLAYA -->
+<div class="overlay" id="modal-partido-playa" style="display:none" onclick="if(event.target===this)closeModalPartidoPlaya()">
+  <div class="msheet">
+    <div class="mshdr">
+      <h3 id="mpp-title">🏖️ NUEVO PARTIDO PLAYA</h3>
+      <button class="hdr-btn" onclick="closeModalPartidoPlaya()">✕</button>
+    </div>
+    <div class="msbody">
+      <div class="ig"><label>Equipo</label>
+        <select class="field" id="pp-equipo" onchange="onPlayaEquipoChange()"><option value="">— Selecciona —</option></select>
+      </div>
+      <div class="ig"><label>Rival</label><input class="field" id="pp-rival" type="text" placeholder="Nombre del rival"></div>
+      <div class="row">
+        <div class="ig"><label>Competición</label><input class="field" id="pp-competicion" type="text" placeholder="Liga, torneo…"></div>
+        <div class="ig"><label>Fecha</label><input class="field" id="pp-fecha" type="date"></div>
+      </div>
+      <!-- Pareja A -->
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="stitle" style="margin-bottom:6px">Pareja A — Set 1</div>
+        <div id="pp-pareja-a" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button class="abt a" style="margin-top:6px" onclick="openPickerPareja('A')">+ Añadir jugadora</button>
+      </div>
+      <!-- Pareja B -->
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="stitle" style="margin-bottom:6px">Pareja B — Set 2</div>
+        <div id="pp-pareja-b" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button class="abt a" style="margin-top:6px" onclick="openPickerPareja('B')">+ Añadir jugadora</button>
+      </div>
+    </div>
+    <div class="msfooter">
+      <button class="big-btn" onclick="savePartidoPlaya()">GUARDAR</button>
+      <button class="big-btn blue" id="btn-iniciar-playa" style="display:none" onclick="iniciarPartidoPlaya()">⚡ INICIAR AHORA</button>
+      <button class="big-btn sec" id="btn-del-playa" style="display:none;color:var(--accent2)" onclick="deletePartidoPlaya()">ELIMINAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ELEGIR PAREJA SET 3 -->
+<div class="overlay" id="modal-set3-playa" style="display:none">
+  <div class="modal">
+    <h2 style="color:var(--accent)">🏖️ SET 3</h2>
+    <p>¿Qué pareja disputa el set decisivo?</p>
+    <div class="modal-btns">
+      <button class="big-btn" id="btn-set3-a" onclick="elegirParejaSet3('A')">PAREJA A</button>
+      <button class="big-btn sec" id="btn-set3-b" onclick="elegirParejaSet3('B')">PAREJA B</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -620,11 +680,11 @@ async function loadData(){
   try {
     var r = await Promise.all([db.getJugadoras(),db.getEquipos(),db.getPartidos()]);
     allJ=r[0]||[]; allE=r[1]||[]; allP=r[2]||[];
-    renderEquipos(); renderJugadoras(); renderPartidos();
+    renderEquipos(); renderJugadoras(); renderPartidos(); renderPlaya();
   } catch(e){
     showToast('Error: '+e.message);
-    ['lista-equipos','lista-jugadoras','lista-partidos'].forEach(function(id){
-      document.getElementById(id).innerHTML='<div style="color:var(--accent2);font-size:13px;padding:20px">'+e.message+'<br><button class="abt a" onclick="loadData()" style="margin-top:10px">🔄 Reintentar</button></div>';
+    ['lista-equipos','lista-jugadoras','lista-partidos','lista-playa'].forEach(function(id){
+      var el=document.getElementById(id); if(el) el.innerHTML='<div style="color:var(--accent2);font-size:13px;padding:20px">'+e.message+'<br><button class="abt a" onclick="loadData()" style="margin-top:10px">🔄 Reintentar</button></div>';
     });
   }
 }
@@ -667,10 +727,10 @@ function renderJugadoras(){
 
 function renderPartidos(){
   var el=document.getElementById('lista-partidos');
-  if (!allP.length){ el.innerHTML='<p style="color:var(--muted);font-size:13px">No hay partidos.</p>'; return; }
+  var indoorP = allP.filter(function(p){ return p.modalidad!=='playa'; });
+  if (!indoorP.length){ el.innerHTML='<p style="color:var(--muted);font-size:13px">No hay partidos.</p>'; return; }
   el.innerHTML='';
-  allP.forEach(function(p){
-    var eq=allE.find(function(e){return e.id===p.equipo_id;});
+  indoorP.forEach(function(p){
     var fecha=new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'});
     var res=p.completado?(p.sets_ganados+'–'+p.sets_perdidos):'En curso';
     var col=!p.completado?'var(--accent)':p.sets_ganados>p.sets_perdidos?'var(--green)':'var(--accent2)';
@@ -1473,11 +1533,11 @@ function isFixedSets(){ return state.format===30; }
 function totalSets(){ return isFixedSets()?3:state.format; }
 
 function checkSetEnd(){
+  if(state.modalidad==='playa'){ checkSetEndPlaya(); return; }
   var u=state.scoreUs, t=state.scoreThem, pts=state.setNum===5?15:25;
   if(u>=pts && u-t>=2) endSet(u>t);
   else if(t>=pts && t-u>=2) endSet(u>t);
 }
-
 function endSet(won){
   state.setHistory.push({us:state.scoreUs, them:state.scoreThem, won:won});
   if(won) state.setsUs++; else state.setsThem++;
@@ -2020,6 +2080,304 @@ function showToast(m){ var t=document.getElementById('toast');t.textContent=m;t.
 // ══════════════════════════════════════
 // ARRANQUE
 // ══════════════════════════════════════
+// ══════════════════════════════════════
+// VÓLEY PLAYA
+// ══════════════════════════════════════
+var editPlayaId = null;
+var playaParejaA = [], playaParejaB = []; // [{jugadora_id,nombre,alias,posicion}]
+var playaState = null; // estado del partido playa en curso
+
+function isPlayaMatch(){ return playaState !== null; }
+
+// ── Render lista playa ──
+function renderPlaya(){
+  var el = document.getElementById('lista-playa'); if(!el) return;
+  var partidos = allP.filter(function(p){ return p.modalidad==='playa'; });
+  if(!partidos.length){ el.innerHTML='<p style="color:var(--muted);font-size:13px">No hay partidos de playa.</p>'; return; }
+  el.innerHTML='';
+  partidos.forEach(function(p){
+    var eq = allE.find(function(e){return e.id===p.equipo_id;});
+    var fecha = new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'});
+    var res = p.completado?(p.sets_ganados+'–'+p.sets_perdidos):'En curso';
+    var col = !p.completado?'var(--accent)':p.sets_ganados>p.sets_perdidos?'var(--green)':'var(--accent2)';
+    var c = document.createElement('div'); c.className='card';
+    c.innerHTML='<div style="display:flex;align-items:center;gap:10px">'
+      +'<div style="flex:1"><div class="card-title">🏖️ vs '+p.rival+'</div>'
+      +'<div class="card-sub">'+(eq?eq.nombre:'—')+' · '+fecha+(p.competicion?' · '+p.competicion:'')+'</div></div>'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;color:'+col+'">'+res+'</div></div>'
+      +'<div class="card-actions">'
+      +'<button class="abt a" data-a="epp" data-id="'+p.id+'">✏️ Editar</button>'
+      +(!p.completado?'<button class="abt g" data-a="spp" data-id="'+p.id+'">⚡ Iniciar</button>':'')
+      +'<button class="abt b" data-a="stpp" data-id="'+p.id+'">📊 Stats</button>'
+      +'</div>';
+    el.appendChild(c);
+  });
+  el.addEventListener('click',function(ev){
+    var b=ev.target.closest('[data-a]'); if(!b) return;
+    if(b.dataset.a==='epp')  openModalPartidoPlaya(b.dataset.id);
+    if(b.dataset.a==='spp')  startPartidoPlaya(b.dataset.id);
+    if(b.dataset.a==='stpp') viewStatsPartido(b.dataset.id);
+  },{once:false});
+}
+
+// ── Modal partido playa ──
+function openModalPartidoPlaya(id){
+  editPlayaId = id||null;
+  document.getElementById('mpp-title').textContent = id?'🏖️ EDITAR PARTIDO PLAYA':'🏖️ NUEVO PARTIDO PLAYA';
+  document.getElementById('btn-iniciar-playa').style.display = id?'flex':'none';
+  document.getElementById('btn-del-playa').style.display = id?'flex':'none';
+  var today = new Date().toISOString().split('T')[0];
+  // Populate equipo select — only playa teams
+  var sel = document.getElementById('pp-equipo');
+  sel.innerHTML='<option value="">— Selecciona —</option>';
+  allE.filter(function(e){return e.modalidad==='playa';}).forEach(function(eq){
+    var o=document.createElement('option'); o.value=eq.id; o.textContent=eq.nombre; sel.appendChild(o);
+  });
+  // Also allow any team
+  var sep=document.createElement('option'); sep.disabled=true; sep.textContent='── Todos los equipos ──'; sel.appendChild(sep);
+  allE.filter(function(e){return e.modalidad!=='playa';}).forEach(function(eq){
+    var o=document.createElement('option'); o.value=eq.id; o.textContent=eq.nombre; sel.appendChild(o);
+  });
+  playaParejaA=[]; playaParejaB=[];
+  if(id){
+    var p=allP.find(function(x){return x.id===id;});
+    if(p){
+      sel.value=p.equipo_id;
+      document.getElementById('pp-rival').value=p.rival||'';
+      document.getElementById('pp-competicion').value=p.competicion||'';
+      document.getElementById('pp-fecha').value=p.fecha?p.fecha.split('T')[0]:today;
+    }
+    loadPlayaParejas(id);
+  } else {
+    document.getElementById('pp-rival').value='';
+    document.getElementById('pp-competicion').value='';
+    document.getElementById('pp-fecha').value=today;
+    renderParejas();
+  }
+  document.getElementById('modal-partido-playa').style.display='flex';
+}
+
+async function loadPlayaParejas(pid){
+  try{
+    var rows = await db.getConvocatoria(pid);
+    playaParejaA = (rows||[]).filter(function(r){return r.pareja==='A';}).map(function(r){return {jugadora_id:r.jugadora_id,nombre:r.jugadora.nombre,alias:r.jugadora.alias,posicion:r.jugadora.posicion};});
+    playaParejaB = (rows||[]).filter(function(r){return r.pareja==='B';}).map(function(r){return {jugadora_id:r.jugadora_id,nombre:r.jugadora.nombre,alias:r.jugadora.alias,posicion:r.jugadora.posicion};});
+    renderParejas();
+  }catch(e){}
+}
+
+function renderParejas(){
+  ['A','B'].forEach(function(par){
+    var list = par==='A'?playaParejaA:playaParejaB;
+    var el = document.getElementById('pp-pareja-'+par.toLowerCase()); if(!el) return;
+    el.innerHTML='';
+    list.forEach(function(j,idx){
+      var row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:8px 10px';
+      row.innerHTML='<span style="flex:1;font-size:13px;font-weight:600">'+j.nombre+(j.alias?' ('+j.alias+')':'')+'</span>'
+        +posBadge(j.posicion,true)
+        +'<button class="rmv" data-par="'+par+'" data-idx="'+idx+'">✕</button>';
+      row.querySelector('.rmv').addEventListener('click',function(){
+        if(par==='A') playaParejaA.splice(idx,1);
+        else playaParejaB.splice(idx,1);
+        renderParejas();
+      });
+      el.appendChild(row);
+    });
+  });
+}
+
+function onPlayaEquipoChange(){}
+
+function openPickerPareja(par){
+  var used = playaParejaA.concat(playaParejaB).map(function(x){return x.jugadora_id;});
+  var max = par==='A'?2:2;
+  var current = par==='A'?playaParejaA:playaParejaB;
+  if(current.length>=max){ showToast('Pareja '+par+' ya tiene 2 jugadoras'); return; }
+  openPicker('Pareja '+par+' — elige jugadora', allJ.filter(function(j){return !used.includes(j.id);}), function(j){
+    var item={jugadora_id:j.id,nombre:j.nombre,alias:j.alias,posicion:j.posicion};
+    if(par==='A') playaParejaA.push(item);
+    else playaParejaB.push(item);
+    renderParejas(); closePicker();
+  });
+}
+
+function closeModalPartidoPlaya(){ document.getElementById('modal-partido-playa').style.display='none'; }
+
+async function savePartidoPlaya(returnId){
+  var eid=document.getElementById('pp-equipo').value;
+  var rival=document.getElementById('pp-rival').value.trim();
+  if(!eid){showToast('Selecciona un equipo');return null;}
+  if(!rival){showToast('Escribe el nombre del rival');return null;}
+  if(playaParejaA.length!==2){showToast('Pareja A necesita 2 jugadoras');return null;}
+  if(playaParejaB.length!==2){showToast('Pareja B necesita 2 jugadoras');return null;}
+  var fechaVal=document.getElementById('pp-fecha').value;
+  var p={id:editPlayaId||undefined,equipo_id:eid,rival:rival,formato:3,
+    competicion:document.getElementById('pp-competicion').value.trim()||null,
+    fecha:fechaVal||new Date().toISOString(),
+    modalidad:'playa'};
+  try{
+    var res=await db.savePartido(p); var sv=Array.isArray(res)?res[0]:res;
+    var pid=editPlayaId||(sv&&sv.id); if(!pid) throw new Error('No ID');
+    // Guardar convocatoria con pareja
+    var rows=[];
+    playaParejaA.forEach(function(j){rows.push({partido_id:pid,jugadora_id:j.jugadora_id,dorsal:null,pareja:'A'});});
+    playaParejaB.forEach(function(j){rows.push({partido_id:pid,jugadora_id:j.jugadora_id,dorsal:null,pareja:'B'});});
+    await db.setConvocatoria(rows);
+    if(editPlayaId){ var i=allP.findIndex(function(x){return x.id===editPlayaId;}); if(i>=0) allP[i]=Object.assign(allP[i],p); }
+    else { if(sv) allP.unshift(sv); else allP.unshift(Object.assign({id:pid},p)); }
+    renderPlaya();
+    if(!returnId){ closeModalPartidoPlaya(); showToast('✅ Partido playa guardado'); }
+    return pid;
+  }catch(e){showToast('Error: '+e.message);return null;}
+}
+
+async function deletePartidoPlaya(){
+  if(!editPlayaId) return;
+  if(!confirm('¿Eliminar este partido?')) return;
+  try{
+    await sbFetch('partidos?id=eq.'+editPlayaId,{method:'DELETE',prefer:'return=minimal'});
+    allP=allP.filter(function(x){return x.id!==editPlayaId;});
+    renderPlaya(); closeModalPartidoPlaya(); showToast('Partido eliminado');
+  }catch(e){showToast('Error: '+e.message);}
+}
+
+async function iniciarPartidoPlaya(){
+  var pid=await savePartidoPlaya(true); if(!pid) return;
+  editPlayaId=pid; closeModalPartidoPlaya(); startPartidoPlaya(pid);
+}
+
+// ── Iniciar partido playa ──
+async function startPartidoPlaya(pid){
+  var p=allP.find(function(x){return x.id===pid;}); if(!p){showToast('Partido no encontrado');return;}
+  var eq=allE.find(function(x){return x.id===p.equipo_id;});
+  try{
+    var rows=await db.getConvocatoria(pid);
+    var pA=(rows||[]).filter(function(r){return r.pareja==='A';}).map(function(r){return {pj_id:r.id,jugadora_id:r.jugadora_id,dorsal:r.dorsal||'',nombre:r.jugadora.nombre,alias:r.jugadora.alias||r.jugadora.nombre,posicion:r.jugadora.posicion,pareja:'A'};});
+    var pB=(rows||[]).filter(function(r){return r.pareja==='B';}).map(function(r){return {pj_id:r.id,jugadora_id:r.jugadora_id,dorsal:r.dorsal||'',nombre:r.jugadora.nombre,alias:r.jugadora.alias||r.jugadora.nombre,posicion:r.jugadora.posicion,pareja:'B'};});
+    if(pA.length!==2||pB.length!==2){showToast('Necesitas 2 jugadoras en cada pareja');return;}
+
+    playaState = {
+      partidoId:pid, teamName:eq?eq.nombre:'Equipo', rivalName:p.rival,
+      parejaA:pA, parejaB:pB,
+      setActual:1, parejaSets:{1:'A',2:'B',3:null},
+      setsUs:0, setsThem:0,
+      scoreUs:0, scoreThem:0,
+      stats:{}, setHistory:[], matchOver:false,
+      serveTeam:null, currentServer:null,
+      activePlayer:null,
+      teamStats:{rival_error:0,general_error:0},
+      afterTimeout:false, timeouts:0, log:[]
+    };
+    // Init stats for all 4 players
+    pA.concat(pB).forEach(function(j){
+      playaState.stats[j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};
+    });
+
+    // Use main match state for UI compatibility
+    state = mkState();
+    state.partidoId=pid; state.teamName=playaState.teamName; state.rivalName=playaState.rivalName;
+    state.format=3; state.categoria=null;
+    state.modalidad='playa';
+    conv = getCurrentPareja();
+    state.onCourt = conv.map(function(j){return j.jugadora_id;});
+    // Copy stats
+    state.stats = playaState.stats;
+    state.statsBySet[1]={};
+    conv.forEach(function(j){state.statsBySet[1][j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};});
+    state.teamStatsBySet[1]={rival_error:0,general_error:0};
+
+    saveLocal();
+    updateMatchUI();
+    switchScreen('match');
+    showToast('🏖️ Set 1 — Pareja A');
+  }catch(e){showToast('Error al iniciar: '+e.message);}
+}
+
+function getCurrentPareja(){
+  if(!playaState) return conv;
+  var par = playaState.parejaSets[playaState.setActual];
+  return par==='A'?playaState.parejaA:playaState.parejaB;
+}
+
+// ── Cambio de pareja al cambiar de set (playa) ──
+function playaNextSet(){
+  if(!playaState) return;
+  playaState.setActual++;
+  var sn = playaState.setActual;
+  if(sn===3 && !playaState.parejaSets[3]){
+    // Preguntar qué pareja juega el set 3
+    var btnA=document.getElementById('btn-set3-a'), btnB=document.getElementById('btn-set3-b');
+    if(btnA) btnA.textContent='PAREJA A: '+playaState.parejaA.map(function(j){return j.alias||j.nombre.split(' ')[0];}).join(' + ');
+    if(btnB) btnB.textContent='PAREJA B: '+playaState.parejaB.map(function(j){return j.alias||j.nombre.split(' ')[0];}).join(' + ');
+    document.getElementById('modal-set3-playa').style.display='flex';
+    return;
+  }
+  continuarSetPlaya();
+}
+
+function elegirParejaSet3(par){
+  if(!playaState) return;
+  playaState.parejaSets[3]=par;
+  document.getElementById('modal-set3-playa').style.display='none';
+  continuarSetPlaya();
+}
+
+function continuarSetPlaya(){
+  if(!playaState) return;
+  var sn = playaState.setActual;
+  // Update state for new set
+  state.setNum=sn; state.scoreUs=0; state.scoreThem=0; state.matchOver=false;
+  state.activePlayer=null; state.pinnedPlayer=null; state.serveTeam=null; state.currentServer=null;
+  state.statsBySet[sn]={};
+  state.teamStatsBySet[sn]={rival_error:0,general_error:0};
+  conv = getCurrentPareja();
+  state.onCourt=conv.map(function(j){return j.jugadora_id;});
+  conv.forEach(function(j){
+    state.statsBySet[sn][j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};
+    if(!state.stats[j.jugadora_id]) state.stats[j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};
+  });
+  Object.keys(META).forEach(function(k){var el=document.getElementById('cnt-'+k);if(el)el.textContent='0';});
+  document.getElementById('serve-us').classList.remove('active');
+  document.getElementById('serve-them').classList.remove('active');
+  var par=playaState.parejaSets[sn];
+  saveLocal(); updateMatchUI();
+  showToast('🏖️ Set '+sn+' — Pareja '+par);
+}
+
+// ── Override checkSetEnd for playa (15 pts, diff 2) ──
+// checkSetEnd already handles this via the standard logic but pts=25
+// We override it when modalidad=playa
+var _origCheckSetEnd = null; // patched below
+
+function checkSetEndPlaya(){
+  var u=state.scoreUs, t=state.scoreThem;
+  if(u>=15 && u-t>=2) endSetPlaya(u>t);
+  else if(t>=15 && t-u>=2) endSetPlaya(u>t);
+}
+
+function endSetPlaya(won){
+  state.setHistory.push({us:state.scoreUs,them:state.scoreThem,won:won});
+  if(won) state.setsUs++; else state.setsThem++;
+  if(playaState){ playaState.setsUs=state.setsUs; playaState.setsThem=state.setsThem; }
+  saveLocal();
+  var over = state.setsUs>=2 || state.setsThem>=2;
+  document.getElementById('set-end-title').textContent=won?'🏖️ ¡SET GANADO!':'💪 Set perdido';
+  document.getElementById('set-end-body').textContent=state.scoreUs+'–'+state.scoreThem+' · Sets: '+state.setsUs+'–'+state.setsThem;
+  document.getElementById('set-end-next').style.display=over?'none':'flex';
+  document.getElementById('set-end-finish').textContent=over?'🎉 VER RESUMEN':'Siguiente set';
+  document.getElementById('modal-set-end').style.display='flex';
+  state.matchOver=true;
+  document.getElementById('set-end-next').onclick=function(){
+    document.getElementById('modal-set-end').style.display='none';
+    playaNextSet();
+  };
+  document.getElementById('set-end-finish').onclick=function(){
+    document.getElementById('modal-set-end').style.display='none';
+    finishMatch();
+  };
+}
+
 setupScoreLongPress();
 init();
 </script>
