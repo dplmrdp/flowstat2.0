@@ -731,6 +731,7 @@ function renderPartidos(){
   if (!indoorP.length){ el.innerHTML='<p style="color:var(--muted);font-size:13px">No hay partidos.</p>'; return; }
   el.innerHTML='';
   indoorP.forEach(function(p){
+    var eq=allE.find(function(e){return e.id===p.equipo_id;});
     var fecha=new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'});
     var res=p.completado?(p.sets_ganados+'–'+p.sets_perdidos):'En curso';
     var col=!p.completado?'var(--accent)':p.sets_ganados>p.sets_perdidos?'var(--green)':'var(--accent2)';
