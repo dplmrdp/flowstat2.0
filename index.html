@@ -2058,6 +2058,8 @@ function openPicker(title,list,cb){
   pickerCb=cb;
   document.getElementById('picker-title').textContent=title.toUpperCase();
   var el=document.getElementById('picker-body'); el.innerHTML='';
+  // Ensure picker appears above other modals
+  document.getElementById('modal-picker').style.zIndex='300';
   if(!list.length){
     el.innerHTML='<div style="text-align:center;padding:20px 0"><div style="font-size:32px;margin-bottom:8px">✅</div><p style="color:var(--muted);font-size:14px;margin-bottom:16px">Todas las jugadoras ya están añadidas.</p><button class="big-btn sec" style="font-size:16px;padding:12px" onclick="closePicker()">CERRAR</button></div>';
     document.getElementById('modal-picker').style.display='flex';return;
@@ -2070,7 +2072,7 @@ function openPicker(title,list,cb){
   });
   document.getElementById('modal-picker').style.display='flex';
 }
-function closePicker(){ document.getElementById('modal-picker').style.display='none';pickerCb=null; }
+function closePicker(){ document.getElementById('modal-picker').style.display='none'; document.getElementById('modal-picker').style.zIndex='200'; pickerCb=null; }
 
 // ══════════════════════════════════════
 // NAV + TOAST
