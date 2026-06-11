@@ -1194,6 +1194,21 @@ function renderPlayerSelector(){
   if(!frontRow || !backRow) return;
   frontRow.innerHTML=''; backRow.innerHTML='';
   var serveMode = state.serveTeam==='us';
+
+  // ── MODO PLAYA: sin rotación, mostrar las jugadoras de la pareja ──
+  if(state.modalidad==='playa'){
+    backRow.style.gridTemplateColumns='repeat(2,1fr)';
+    frontRow.style.display='none';
+    // Ocultar botones de rotación en playa
+    var rotBtns = document.querySelector('#court-field > div:last-child');
+    if(rotBtns) rotBtns.style.display='none';
+    conv.forEach(function(j){
+      makePlayaTile(j, backRow, serveMode);
+    });
+    return;
+  }
+  frontRow.style.display='';
+
   var rot = state.rotation;
   var frontPos = rot.length>=4 ? [rot[3],rot[2],rot[1]] : [];
   var backPos  = rot.length>=6 ? [rot[4],rot[5],rot[0]] : [];
@@ -1245,6 +1260,49 @@ function renderPlayerSelector(){
   }
   [4,3,2].forEach(function(p,i){ makeTile(frontPos[i],p,frontRow); });
   [5,6,1].forEach(function(p,i){ makeTile(backPos[i], p,backRow); });
+}
+
+function makePlayaTile(j, container, serveMode){
+  var jid = j.jugadora_id;
+  var pinned   = !serveMode && state.pinnedPlayer===jid;
+  var selected = !serveMode && state.activePlayer===jid;
+  var isServer = state.currentServer===jid;
+  var posCol   = j.posicion?'var(--pos-'+j.posicion+')':'var(--accent)';
+  var tile=document.createElement('div');
+  tile.className = (isServer||pinned)?'ptile pinned':selected?'ptile sel':'ptile';
+  var numColor = isServer?'var(--green)':(pinned?'var(--purple)':posCol);
+  var posAbbr  = j.posicion?(POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase():'';
+  tile.innerHTML =
+    (isServer?'<span style="font-size:9px;position:absolute;top:2px;left:3px">🏐</span>':'')
+    +'<span class="pnum" style="color:'+numColor+'">#'+(j.dorsal||'—')+'</span>'
+    +'<span class="pnm">'+(j.alias||j.nombre.split(' ')[0])+'</span>'
+    +(posAbbr?'<span style="font-size:8px;color:'+numColor+';font-weight:700;opacity:0.8">'+posAbbr+'</span>':'');
+  (function(jid,pinned){
+    tile.onclick=function(){
+      if(serveMode){
+        state.currentServer=state.currentServer===jid?null:jid;
+        state.serveTeam=null;
+        document.getElementById('serve-us').classList.toggle('active',!!state.currentServer);
+        document.getElementById('serve-them').classList.remove('active');
+        document.getElementById('en-juego-bar').style.display='none';
+        updateServerRow(); updateStatPanel(); saveLocal();
+      } else {
+        if(pinned){state.pinnedPlayer=null;state.activePlayer=null;}
+        else state.activePlayer=state.activePlayer===jid?null:jid;
+        renderPlayerSelector();
+      }
+    };
+    var pt=null;
+    tile.addEventListener('pointerdown',function(){
+      pt=setTimeout(function(){
+        pt=null;
+        if(!serveMode){state.pinnedPlayer=pinned?null:jid;state.activePlayer=state.pinnedPlayer;renderPlayerSelector();if(navigator.vibrate)navigator.vibrate(40);}
+      },500);
+    });
+    tile.addEventListener('pointerup',function(){clearTimeout(pt);});
+    tile.addEventListener('pointerleave',function(){clearTimeout(pt);});
+  })(jid,pinned);
+  container.appendChild(tile);
 }
 
 
@@ -1482,6 +1540,16 @@ function applySub(){
 // UI PARTIDO
 // ══════════════════════════════════════
 function updateMatchUI(){
+  var frontRow=document.getElementById('front-row');
+  var backRow=document.getElementById('back-row');
+  var rotBtns=document.querySelector('#court-field > div:last-child');
+  if(state.modalidad!=='playa'){
+    if(frontRow) frontRow.style.display='';
+    if(backRow) backRow.style.gridTemplateColumns='';
+    if(rotBtns) rotBtns.style.display='';
+  } else {
+    if(rotBtns) rotBtns.style.display='none';
+  }
   document.getElementById('m-team-name').textContent = state.teamName;
   document.getElementById('m-rival-name').textContent = state.rivalName;
   document.getElementById('m-set-num').textContent = state.setNum;
