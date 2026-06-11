@@ -563,7 +563,7 @@ var db = {
   updateDorsal: function(id,d){ return sbFetch('equipo_jugadoras?id=eq.'+id, {method:'PATCH',prefer:'return=minimal',body:JSON.stringify({dorsal:d})}); },
   getPartidos: function(){ return sbFetch('partidos?select=*&order=fecha.desc'); },
   savePartido: function(p){
-    var b = JSON.stringify({equipo_id:p.equipo_id,rival:p.rival,formato:p.formato,temporada:p.temporada||null,competicion:p.competicion||null,categoria:p.categoria||null,fecha:p.fecha||null});
+    var b = JSON.stringify({equipo_id:p.equipo_id,rival:p.rival,formato:p.formato,temporada:p.temporada||null,competicion:p.competicion||null,categoria:p.categoria||null,fecha:p.fecha||null,modalidad:p.modalidad||'indoor'});
     if (p.id) return sbFetch('partidos?id=eq.'+p.id, {method:'PATCH',prefer:'return=representation',body:b});
     return sbFetch('partidos', {method:'POST',body:b});
   },
@@ -2190,14 +2190,33 @@ function renderParejas(){
   });
 }
 
-function onPlayaEquipoChange(){}
+function onPlayaEquipoChange(){
+  // Clear parejas when team changes so user re-selects from new team
+  playaParejaA=[]; playaParejaB=[];
+  renderParejas();
+  showToast('Selecciona las jugadoras de cada pareja');
+}
 
-function openPickerPareja(par){
+async function openPickerPareja(par){
+  var current = par==='A' ? playaParejaA : playaParejaB;
+  if(current.length>=2){ showToast('Pareja '+par+' ya tiene 2 jugadoras'); return; }
   var used = playaParejaA.concat(playaParejaB).map(function(x){return x.jugadora_id;});
-  var max = par==='A'?2:2;
-  var current = par==='A'?playaParejaA:playaParejaB;
-  if(current.length>=max){ showToast('Pareja '+par+' ya tiene 2 jugadoras'); return; }
-  openPicker('Pareja '+par+' — elige jugadora', allJ.filter(function(j){return !used.includes(j.id);}), function(j){
+  // Get players from selected team's plantilla
+  var eid = document.getElementById('pp-equipo').value;
+  var available = [];
+  if(eid){
+    try{
+      var rows = await db.getPlantilla(eid);
+      available = (rows||[]).map(function(r){
+        return {id:r.jugadora_id, nombre:r.jugadora.nombre, alias:r.jugadora.alias, posicion:r.jugadora.posicion, anio_nacimiento:null};
+      }).filter(function(j){ return !used.includes(j.id); });
+    }catch(e){}
+  }
+  // Fallback: all players if no team selected or no plantilla
+  if(!available.length && !eid){
+    available = allJ.filter(function(j){ return !used.includes(j.id); });
+  }
+  openPicker('Pareja '+par+' — elige jugadora', available, function(j){
     var item={jugadora_id:j.id,nombre:j.nombre,alias:j.alias,posicion:j.posicion};
     if(par==='A') playaParejaA.push(item);
     else playaParejaB.push(item);
