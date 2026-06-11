@@ -1087,11 +1087,20 @@ function logStat(type){
       state.serveTeam = 'them';
       state.currentServer = null;
     } else {
-      // Nosotras ganamos → misma sacadora sigue (o si veníamos de ellas, rotar)
-      if(state.serveTeam==='them'){
-        // Recuperamos el saque → ROTAR
+      // Nosotras ganamos
+      if(state.modalidad==='playa'){
+        // Playa: alternar entre las 2 jugadoras de la pareja
+        if(state.serveTeam==='them' || !state.currentServer){
+          // Recuperamos saque → saca la OTRA jugadora (alternancia)
+          var otra = conv.find(function(j){ return j.jugadora_id !== state.currentServer; });
+          state.currentServer = otra ? otra.jugadora_id : (conv[0] && conv[0].jugadora_id);
+        }
+        // Si ya sacábamos y ganamos, sigue la misma → no cambiar
+        state.serveTeam = null;
+      } else if(state.serveTeam==='them'){
+        // Indoor: recuperamos el saque → ROTAR
         if(state.rotation.length) rotate(1);
-        else state.serveTeam='us'; // sin rotación definida
+        else state.serveTeam='us';
       } else {
         // Ya sacábamos → misma sacadora continúa
         state.serveTeam = null;
