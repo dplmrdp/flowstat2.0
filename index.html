@@ -182,7 +182,7 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
     <div class="hub-ph">
       <span class="stitle" style="margin:0">Partidos</span>
       <div style="display:flex;gap:6px">
-        <button class="hub-add" style="background:var(--blue);color:#0a0e1a" onclick="openConsulta()">📊 Consultar</button>
+        <button class="hub-add" style="background:var(--blue);color:#0a0e1a" onclick="openConsulta('partido','indoor')">📊 Consultar</button>
         <button class="hub-add" onclick="openModalPartido(null)">+ Nuevo</button>
       </div>
     </div>
@@ -510,6 +510,27 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
       <button class="big-btn" id="btn-set3-a" onclick="elegirParejaSet3('A')">PAREJA A</button>
       <button class="big-btn sec" id="btn-set3-b" onclick="elegirParejaSet3('B')">PAREJA B</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL: ¿QUIÉN SACA AL INICIO DEL SET? -->
+<div class="overlay" id="modal-serve-start" style="display:none">
+  <div class="modal">
+    <h2 id="serve-start-title">🏐 SAQUE INICIAL</h2>
+    <p>¿Quién saca primero en este set?</p>
+    <div class="modal-btns">
+      <button class="big-btn" onclick="serveStartUs()">🏐 NOSOTRAS</button>
+      <button class="big-btn sec" onclick="serveStartThem()">ELLAS SACAN</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ¿CUÁL DE LAS DOS SACA? (playa) -->
+<div class="overlay" id="modal-serve-who" style="display:none">
+  <div class="modal">
+    <h2>🏐 ¿QUIÉN SACA?</h2>
+    <p>Elige la jugadora que saca</p>
+    <div class="modal-btns" id="serve-who-btns"></div>
   </div>
 </div>
 
@@ -1089,13 +1110,14 @@ function logStat(type){
     } else {
       // Nosotras ganamos
       if(state.modalidad==='playa'){
-        // Playa: alternar entre las 2 jugadoras de la pareja
-        if(state.serveTeam==='them' || !state.currentServer){
-          // Recuperamos saque → saca la OTRA jugadora (alternancia)
-          var otra = conv.find(function(j){ return j.jugadora_id !== state.currentServer; });
+        // Playa: si recuperamos saque, saca la OTRA jugadora (alternancia)
+        if(state.serveTeam==='them'){
+          var prev = playaState ? playaState.lastServer : state.currentServer;
+          var otra = conv.find(function(j){ return j.jugadora_id !== prev; });
           state.currentServer = otra ? otra.jugadora_id : (conv[0] && conv[0].jugadora_id);
+          if(playaState) playaState.lastServer = state.currentServer;
         }
-        // Si ya sacábamos y ganamos, sigue la misma → no cambiar
+        // Si ya sacábamos y ganamos → misma jugadora sigue (no cambiar currentServer)
         state.serveTeam = null;
       } else if(state.serveTeam==='them'){
         // Indoor: recuperamos el saque → ROTAR
@@ -1146,9 +1168,10 @@ function undoLast(){
 }
 
 function updateStatPanel(){
-  // Bloquear panel si saca nuestro equipo y no hay sacadora elegida
   var panel = document.getElementById('stat-panel');
   if(!panel) return;
+  // En playa nunca se bloquea (saque automático)
+  if(state.modalidad==='playa'){ panel.classList.remove('blocked'); return; }
   var needsServer = state.serveTeam==='us' && !state.currentServer;
   if(needsServer) panel.classList.add('blocked');
   else panel.classList.remove('blocked');
@@ -1172,11 +1195,23 @@ function setServe(t){
 function updateServerRow(){
   var lbl = document.getElementById('psec-label');
   if(!lbl) return;
+  // En playa: mensaje simple, saque automático
+  if(state.modalidad==='playa'){
+    if(state.currentServer){
+      var sp = conv.find(function(x){return x.jugadora_id===state.currentServer;});
+      lbl.innerHTML = '🏐 Saca <b style="color:var(--green)">'+(sp?sp.alias||sp.nombre:'—')+'</b> · toca jugadora para registrar';
+    } else if(state.serveTeam==='them'){
+      lbl.innerHTML = 'Saca el rival · toca jugadora para registrar';
+    } else {
+      lbl.innerHTML = 'Toca jugadora para registrar';
+    }
+    updateStatPanel();
+    renderPlayerSelector();
+    return;
+  }
   if(state.serveTeam==='us' && !state.currentServer){
-    // Modo selección activo — pedir sacadora
     lbl.innerHTML = '🏐 <b style="color:var(--accent)">Toca quién saca</b> y vuelves al registro';
   } else if(state.currentServer){
-    // Sacadora definida — mostrar quién saca, modo registro normal
     var srv = conv.find(function(x){return x.jugadora_id===state.currentServer;});
     lbl.innerHTML = '🏐 Saca <b style="color:var(--green)">'+(srv?srv.alias||srv.nombre:'—')+'</b> · pulsa 🏐 Nosotras para cambiar';
   } else {
@@ -1273,44 +1308,27 @@ function renderPlayerSelector(){
 
 function makePlayaTile(j, container, serveMode){
   var jid = j.jugadora_id;
-  var pinned   = !serveMode && state.pinnedPlayer===jid;
-  var selected = !serveMode && state.activePlayer===jid;
+  var selected = state.activePlayer===jid;
   var isServer = state.currentServer===jid;
   var posCol   = j.posicion?'var(--pos-'+j.posicion+')':'var(--accent)';
   var tile=document.createElement('div');
-  tile.className = (isServer||pinned)?'ptile pinned':selected?'ptile sel':'ptile';
-  var numColor = isServer?'var(--green)':(pinned?'var(--purple)':posCol);
+  tile.className='ptile';
+  if(isServer){ tile.style.borderColor='var(--green)'; tile.style.background='rgba(46,204,113,0.12)'; }
+  else if(selected){ tile.className='ptile sel'; }
+  var numColor = isServer?'var(--green)':posCol;
   var posAbbr  = j.posicion?(POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase():'';
   tile.innerHTML =
-    (isServer?'<span style="font-size:9px;position:absolute;top:2px;left:3px">🏐</span>':'')
+    (isServer?'<span style="font-size:11px;position:absolute;top:3px;left:4px">🏐</span>':'')
     +'<span class="pnum" style="color:'+numColor+'">#'+(j.dorsal||'—')+'</span>'
     +'<span class="pnm">'+(j.alias||j.nombre.split(' ')[0])+'</span>'
-    +(posAbbr?'<span style="font-size:8px;color:'+numColor+';font-weight:700;opacity:0.8">'+posAbbr+'</span>':'');
-  (function(jid,pinned){
+    +(isServer?'<span style="font-size:8px;color:var(--green);font-weight:700">SACA</span>'
+      :(posAbbr?'<span style="font-size:8px;color:'+numColor+';font-weight:700;opacity:0.8">'+posAbbr+'</span>':''));
+  (function(jid){
     tile.onclick=function(){
-      if(serveMode){
-        state.currentServer=state.currentServer===jid?null:jid;
-        state.serveTeam=null;
-        document.getElementById('serve-us').classList.toggle('active',!!state.currentServer);
-        document.getElementById('serve-them').classList.remove('active');
-        document.getElementById('en-juego-bar').style.display='none';
-        updateServerRow(); updateStatPanel(); saveLocal();
-      } else {
-        if(pinned){state.pinnedPlayer=null;state.activePlayer=null;}
-        else state.activePlayer=state.activePlayer===jid?null:jid;
-        renderPlayerSelector();
-      }
+      state.activePlayer = state.activePlayer===jid ? null : jid;
+      renderPlayerSelector();
     };
-    var pt=null;
-    tile.addEventListener('pointerdown',function(){
-      pt=setTimeout(function(){
-        pt=null;
-        if(!serveMode){state.pinnedPlayer=pinned?null:jid;state.activePlayer=state.pinnedPlayer;renderPlayerSelector();if(navigator.vibrate)navigator.vibrate(40);}
-      },500);
-    });
-    tile.addEventListener('pointerup',function(){clearTimeout(pt);});
-    tile.addEventListener('pointerleave',function(){clearTimeout(pt);});
-  })(jid,pinned);
+  })(jid);
   container.appendChild(tile);
 }
 
@@ -1659,15 +1677,16 @@ function nextSet(){
 async function finishMatch(){
   try{
     var rj=[];
-    // Guardar stats totales Y por set
-    conv.forEach(function(j){
-      var s=state.stats[j.jugadora_id]||{};
+    // Guardar stats de TODAS las jugadoras con datos (no solo conv)
+    // En playa, state.stats tiene las 4 jugadoras; conv solo tiene 2
+    Object.keys(state.stats).forEach(function(jid){
+      var s=state.stats[jid]||{};
       // Totales (set_num = null)
-      Object.keys(s).forEach(function(t){ if(s[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:j.jugadora_id,tipo:t,cantidad:s[t],set_num:null}); });
+      Object.keys(s).forEach(function(t){ if(s[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:s[t],set_num:null}); });
       // Por set
       Object.keys(state.statsBySet).forEach(function(sn){
-        var ss=(state.statsBySet[sn][j.jugadora_id])||{};
-        Object.keys(ss).forEach(function(t){ if(ss[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:j.jugadora_id,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
+        var ss=(state.statsBySet[sn]||{})[jid]||{};
+        Object.keys(ss).forEach(function(t){ if(ss[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
       });
     });
     var re=[];
@@ -1682,16 +1701,17 @@ async function finishMatch(){
     if(i>=0){ allP[i].sets_ganados=state.setsUs; allP[i].sets_perdidos=state.setsThem; allP[i].completado=true; }
     clearLocal(); showToast('✅ Partido guardado');
   } catch(e){ showToast('⚠️ Sin conexión — datos locales'); }
-  renderPartidos(); renderEquipos();
+  renderPartidos(); renderEquipos(); renderPlaya();
+  var finishedId = state.partidoId;
   openConsulta('partido');
   setTimeout(async function(){
     var sel=document.getElementById('c-partido-sel');
-    if(sel && state.partidoId){ sel.value=state.partidoId; await onConsultaPartidoChange(); }
+    if(sel && finishedId){ sel.value=finishedId; await onConsultaPartidoChange(); }
   },100);
   var bk=document.createElement('button'); bk.className='big-btn sec';
   bk.style.cssText='margin:12px 16px;font-size:16px;padding:11px;width:calc(100% - 32px)';
   bk.textContent='← VOLVER AL MENÚ';
-  bk.onclick=function(){ bk.remove(); switchScreen('hub'); };
+  bk.onclick=function(){ bk.remove(); playaState=null; switchScreen('hub'); };
   setTimeout(function(){ var b=document.getElementById('consulta-body'); if(b) b.appendChild(bk); },400);
 }
 
@@ -1777,9 +1797,11 @@ function renderStats(){
 // CONSULTA DE ESTADÍSTICAS (desde hub)
 // ══════════════════════════════════════
 var consultaMode = 'partido';
+var consultaModalidad = null;
 
-function openConsulta(mode){
+function openConsulta(mode, modalidad){
   consultaMode = mode || 'partido';
+  consultaModalidad = modalidad || null;
   document.getElementById('consulta-export-btn').style.display = 'none';
   setConsultaMode(consultaMode);
   switchScreen('consulta');
@@ -1802,10 +1824,15 @@ function renderConsultaFilters(){
     var html = '<div class="ig"><label>Selecciona partido</label>'
       +'<select class="field" id="c-partido-sel" onchange="onConsultaPartidoChange()">'
       +'<option value="">— Elige un partido —</option>';
-    allP.forEach(function(p){
+    allP.filter(function(p){
+      if(consultaModalidad==='playa') return p.modalidad==='playa';
+      if(consultaModalidad==='indoor') return p.modalidad!=='playa';
+      return true;
+    }).forEach(function(p){
       var eq = allE.find(function(e){return e.id===p.equipo_id;});
       var fecha = new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'});
-      html += '<option value="'+p.id+'">'+(eq?eq.nombre:'?')+' vs '+p.rival+' · '+fecha+'</option>';
+      var ico = p.modalidad==='playa'?'🏖️ ':'';
+      html += '<option value="'+p.id+'">'+ico+(eq?eq.nombre:'?')+' vs '+p.rival+' · '+fecha+'</option>';
     });
     html += '</select></div>';
     // Selector de set (se muestra tras elegir partido)
@@ -1815,15 +1842,26 @@ function renderConsultaFilters(){
       +'</select></div>';
     el.innerHTML = html;
   } else {
-    // Selector de jugadora
+    // Selector de jugadora — solo las que han jugado algún partido
     var html2 = '<div class="ig"><label>Selecciona jugadora</label>'
       +'<select class="field" id="c-jugadora-sel" onchange="renderConsultaJugadora()">'
-      +'<option value="">— Elige una jugadora —</option>';
-    allJ.forEach(function(j){
-      html2 += '<option value="'+j.id+'">'+j.nombre+(j.alias?' ('+j.alias+')':'')+'</option>';
-    });
-    html2 += '</select></div>';
+      +'<option value="">— Cargando jugadoras… —</option></select></div>';
     el.innerHTML = html2;
+    // Cargar jugadoras que han jugado (tienen registro en partido_jugadoras)
+    sbFetch('partido_jugadoras?select=jugadora_id').then(function(rows){
+      var played = {};
+      (rows||[]).forEach(function(r){ played[r.jugadora_id]=true; });
+      var jugadoras = allJ.filter(function(j){ return played[j.id]; });
+      var sel = document.getElementById('c-jugadora-sel');
+      if(!sel) return;
+      if(!jugadoras.length){ sel.innerHTML='<option value="">No hay jugadoras con partidos</option>'; return; }
+      var opts = '<option value="">— Elige una jugadora —</option>';
+      jugadoras.forEach(function(j){ opts += '<option value="'+j.id+'">'+j.nombre+(j.alias?' ('+j.alias+')':'')+'</option>'; });
+      sel.innerHTML = opts;
+    }).catch(function(){
+      var sel=document.getElementById('c-jugadora-sel');
+      if(sel){ var opts='<option value="">— Elige una jugadora —</option>'; allJ.forEach(function(j){opts+='<option value="'+j.id+'">'+j.nombre+(j.alias?' ('+j.alias+')':'')+'</option>';}); sel.innerHTML=opts; }
+    });
   }
 }
 
@@ -1833,12 +1871,17 @@ async function onConsultaPartidoChange(){
   document.getElementById('consulta-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try{
     var p = allP.find(function(x){return x.id===pid;});
-    // Build set selector from actual set_num values in stats
-    var r2 = await db.getStatsP(pid);
-    var allSets = new Set();
-    (r2[0]||[]).forEach(function(s){ if(s.set_num) allSets.add(s.set_num); });
-    (r2[1]||[]).forEach(function(s){ if(s.set_num) allSets.add(s.set_num); });
-    var nSets = allSets.size > 0 ? Math.max.apply(null, Array.from(allSets)) : (p?(p.sets_ganados||0)+(p.sets_perdidos||0):0);
+    var isLive = state.partidoId===pid && !(p && p.completado);
+    var nSets;
+    if(isLive){
+      nSets = Object.keys(state.statsBySet).map(function(x){return parseInt(x);}).reduce(function(a,b){return Math.max(a,b);},1);
+    } else {
+      var r2 = await db.getStatsP(pid);
+      var allSets = new Set();
+      (r2[0]||[]).forEach(function(s){ if(s.set_num) allSets.add(s.set_num); });
+      (r2[1]||[]).forEach(function(s){ if(s.set_num) allSets.add(s.set_num); });
+      nSets = allSets.size > 0 ? Math.max.apply(null, Array.from(allSets)) : (p?(p.sets_ganados||0)+(p.sets_perdidos||0):0);
+    }
     var selEl = document.getElementById('c-set-sel');
     selEl.innerHTML = '<option value="all">Partido completo</option>';
     for(var i=1;i<=nSets;i++) selEl.innerHTML += '<option value="'+i+'">Set '+i+'</option>';
@@ -1853,10 +1896,33 @@ async function renderConsultaPartido(){
   var body = document.getElementById('consulta-body');
   body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try{
-    var r = await db.getStatsP(pid);
-    var sj = r[0]||[], se = r[1]||[];
-    var co = await db.getConvocatoria(pid);
     var p = allP.find(function(x){return x.id===pid;});
+    var isLive = state.partidoId===pid && !(p && p.completado);
+    var sj, se;
+    if(isLive){
+      // Partido en curso: construir desde el estado en vivo
+      sj=[]; se=[];
+      Object.keys(state.stats).forEach(function(jid){
+        var s=state.stats[jid]||{};
+        Object.keys(s).forEach(function(t){ if(s[t]>0) sj.push({jugadora_id:jid,tipo:t,cantidad:s[t],set_num:null}); });
+      });
+      Object.keys(state.statsBySet).forEach(function(sn){
+        var setObj=state.statsBySet[sn]||{};
+        Object.keys(setObj).forEach(function(jid){
+          var ss=setObj[jid]||{};
+          Object.keys(ss).forEach(function(t){ if(ss[t]>0) sj.push({jugadora_id:jid,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
+        });
+      });
+      Object.keys(state.teamStats).forEach(function(t){ if(state.teamStats[t]>0) se.push({tipo:t,cantidad:state.teamStats[t],set_num:null}); });
+      Object.keys(state.teamStatsBySet).forEach(function(sn){
+        var ts2=state.teamStatsBySet[sn]||{};
+        Object.keys(ts2).forEach(function(t){ if(ts2[t]>0) se.push({tipo:t,cantidad:ts2[t],set_num:parseInt(sn)}); });
+      });
+    } else {
+      var r = await db.getStatsP(pid);
+      sj = r[0]||[]; se = r[1]||[];
+    }
+    var co = await db.getConvocatoria(pid);
     var eq = p ? allE.find(function(e){return e.id===p.equipo_id;}) : null;
     var jugadoras = (co||[]).map(function(row){
       return {jugadora_id:row.jugadora_id, dorsal:row.dorsal||'', nombre:row.jugadora.nombre, alias:row.jugadora.alias||row.jugadora.nombre, posicion:row.jugadora.posicion};
@@ -1905,10 +1971,10 @@ async function renderConsultaPartido(){
       +'</div>';
 
     // Totales equipo
-    var T={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0};
+    var T={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0};
     jugadoras.forEach(function(j){ Object.keys(T).forEach(function(k){ T[k]+=(ts[j.jugadora_id]||{})[k]||0; }); });
     var pts=T.kill+T.ace+T.block+T.tip+(tts.rival_error||0);
-    var err=T.serve_error+T.reception_error+T.attack_error+T.net_fault+T.blockout+(tts.general_error||0);
+    var err=T.serve_error+T.reception_serve_error+T.reception_error+T.attack_error+T.net_fault+T.blockout+(tts.general_error||0);
     html += '<div class="stitle" style="padding:0 0 6px">Equipo</div>'
       +'<div class="tgrid" style="margin-bottom:14px">'
       +'<div class="tbox g"><div class="tv">'+pts+'</div><div class="tk">Puntos</div></div>'
@@ -1922,7 +1988,7 @@ async function renderConsultaPartido(){
     jugadoras.map(function(j){
       var s=ts[j.jugadora_id]||{};
       var jpts=(s.kill||0)+(s.ace||0)+(s.block||0)+(s.tip||0);
-      var jerr=(s.serve_error||0)+(s.reception_error||0)+(s.attack_error||0)+(s.net_fault||0)+(s.blockout||0);
+      var jerr=(s.serve_error||0)+(s.reception_serve_error||0)+(s.reception_error||0)+(s.attack_error||0)+(s.net_fault||0)+(s.blockout||0);
       return {j:j,s:s,pts:jpts,err:jerr};
     }).sort(function(a,b){return b.pts-a.pts;}).forEach(function(item){
       var j=item.j,s=item.s;
@@ -1983,57 +2049,66 @@ async function renderConsultaJugadora(){
   body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try{
     var j = allJ.find(function(x){return x.id===jid;});
-    // Get all stats for this jugadora across all partidos
-    var statsRows = await sbFetch('stats_jugadora?jugadora_id=eq.'+jid+'&select=*');
-    statsRows = statsRows||[];
-
-    // Get partido_jugadoras to know which partidos she played
+    // Solo filas de totales (set_num null) para no duplicar
+    var allRows = await sbFetch('stats_jugadora?jugadora_id=eq.'+jid+'&select=*');
+    allRows = (allRows||[]).filter(function(s){ return s.set_num===null||s.set_num===undefined; });
     var pjRows = await sbFetch('partido_jugadoras?jugadora_id=eq.'+jid+'&select=partido_id,dorsal');
     pjRows = pjRows||[];
 
+    // Mapa partido_id → modalidad
+    function modOf(pid){ var p=allP.find(function(x){return x.id===pid;}); return p?(p.modalidad||'indoor'):'indoor'; }
+
     var html = '<div style="padding:14px 16px 0">';
-    // Header jugadora
     html += '<div class="stcard" style="margin-bottom:14px">'
       +'<div style="display:flex;align-items:center;gap:10px">'
       +'<div style="flex:1"><div style="font-weight:700;font-size:16px">'+j.nombre+'</div>'
       +(j.alias?'<div style="font-size:12px;color:var(--muted)">'+j.alias+'</div>':'')+'</div>'
-      +posBadge(j.posicion,false)+'</div>'
-      +'<div style="font-size:11px;color:var(--muted);margin-top:6px">'+(j.anio_nacimiento?'Nacida en '+j.anio_nacimiento+' · ':'')+(pjRows.length)+' partido'+(pjRows.length!==1?'s':'')+' jugados</div>'
-      +'</div>';
+      +posBadge(j.posicion,false)+'</div></div>';
 
-    // Totales globales
-    var TOT={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0};
-    statsRows.forEach(function(s){ if(TOT.hasOwnProperty(s.tipo)) TOT[s.tipo]+=s.cantidad||0; });
-    var tpts=TOT.kill+TOT.ace+TOT.block+TOT.tip, terr=TOT.serve_error+TOT.reception_error+TOT.attack_error+TOT.net_fault+TOT.blockout;
-    html += '<div class="stitle" style="padding:0 0 6px">Totales acumulados ('+pjRows.length+' partidos)</div>'
-      +'<div class="tgrid" style="margin-bottom:6px">'
-      +'<div class="tbox g"><div class="tv">'+tpts+'</div><div class="tk">Puntos</div></div>'
-      +'<div class="tbox r"><div class="tv">'+terr+'</div><div class="tk">Errores</div></div>'
-      +'<div class="tbox a"><div class="tv">'+TOT.kill+'</div><div class="tk">Remates</div></div>'
-      +'<div class="tbox b"><div class="tv">'+TOT.ace+'</div><div class="tk">Saques</div></div>'
-      +'</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px">'
-      +'<div class="tbox"><div class="tv" style="font-size:20px;color:var(--blue)">'+TOT.block+'</div><div class="tk">Bloqueos</div></div>'
-      +'<div class="tbox"><div class="tv" style="font-size:20px;color:var(--purple)">'+TOT.tip+'</div><div class="tk">Fintas</div></div>'
-      +'<div class="tbox r"><div class="tv" style="font-size:20px">'+TOT.serve_error+'</div><div class="tk">F.Saque</div></div>'
-      +'<div class="tbox r"><div class="tv" style="font-size:20px">'+TOT.reception_error+'</div><div class="tk">F.Recep</div></div>'
-      +'</div>';
+    // Renderizar una sección por modalidad
+    function seccionModalidad(modalidad, titulo, icono){
+      var partidosMod = pjRows.filter(function(pj){ return modOf(pj.partido_id)===modalidad; });
+      if(!partidosMod.length) return '';
+      var pidsMod = {}; partidosMod.forEach(function(pj){ pidsMod[pj.partido_id]=true; });
+      var rowsMod = allRows.filter(function(s){ return pidsMod[s.partido_id]; });
 
-    // Por partido
-    if(pjRows.length){
-      html += '<div class="stitle" style="padding:0 0 6px">Por partido</div>';
-      // Group stats by partido_id
-      var byPartido = {};
-      statsRows.forEach(function(s){ if(!byPartido[s.partido_id]) byPartido[s.partido_id]={}; byPartido[s.partido_id][s.tipo]=(byPartido[s.partido_id][s.tipo]||0)+s.cantidad; });
-      pjRows.forEach(function(pj){
-        var p = allP.find(function(x){return x.id===pj.partido_id;});
-        var eq = p ? allE.find(function(e){return e.id===p.equipo_id;}) : null;
-        var s = byPartido[pj.partido_id]||{};
+      var TOT={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0};
+      rowsMod.forEach(function(s){ if(TOT.hasOwnProperty(s.tipo)) TOT[s.tipo]+=s.cantidad||0; });
+      var tpts=TOT.kill+TOT.ace+TOT.block+TOT.tip;
+      var terr=TOT.serve_error+TOT.reception_serve_error+TOT.reception_error+TOT.attack_error+TOT.net_fault+TOT.blockout;
+      var nSaq=TOT.serve_count||0;
+      var pctAce=nSaq>0?Math.round(TOT.ace/nSaq*100):0;
+      var pctErrSaq=nSaq>0?Math.round(TOT.serve_error/nSaq*100):0;
+
+      var h='<div class="stitle" style="padding:8px 0 6px;color:var(--accent)">'+icono+' '+titulo+' ('+partidosMod.length+' partido'+(partidosMod.length!==1?'s':'')+')</div>'
+        +'<div class="tgrid" style="margin-bottom:6px">'
+        +'<div class="tbox g"><div class="tv">'+tpts+'</div><div class="tk">Puntos</div></div>'
+        +'<div class="tbox r"><div class="tv">'+terr+'</div><div class="tk">Errores</div></div>'
+        +'<div class="tbox a"><div class="tv">'+TOT.kill+'</div><div class="tk">Remates</div></div>'
+        +'<div class="tbox b"><div class="tv">'+TOT.ace+'</div><div class="tk">Saques dir.</div></div>'
+        +'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">'
+        +'<div class="tbox"><div class="tv" style="font-size:20px;color:var(--blue)">'+TOT.block+'</div><div class="tk">Bloqueos</div></div>'
+        +'<div class="tbox"><div class="tv" style="font-size:20px;color:var(--purple)">'+TOT.tip+'</div><div class="tk">Fintas</div></div>'
+        +'<div class="tbox r"><div class="tv" style="font-size:20px">'+TOT.serve_error+'</div><div class="tk">F.Saque</div></div>'
+        +'<div class="tbox r"><div class="tv" style="font-size:20px">'+(TOT.reception_serve_error+TOT.reception_error)+'</div><div class="tk">F.Recep</div></div>'
+        +'</div>';
+      if(nSaq>0){
+        h+='<div style="background:var(--surface);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--muted);margin-bottom:10px">'
+          +'Saques: <b style="color:var(--text)">'+nSaq+'</b> · Directos: <b style="color:var(--green)">'+pctAce+'%</b> · Errores: <b style="color:var(--accent2)">'+pctErrSaq+'%</b></div>';
+      }
+      // Por partido
+      var byPartido={};
+      rowsMod.forEach(function(s){ if(!byPartido[s.partido_id]) byPartido[s.partido_id]={}; byPartido[s.partido_id][s.tipo]=(byPartido[s.partido_id][s.tipo]||0)+s.cantidad; });
+      partidosMod.forEach(function(pj){
+        var p=allP.find(function(x){return x.id===pj.partido_id;});
+        var eq=p?allE.find(function(e){return e.id===p.equipo_id;}):null;
+        var s=byPartido[pj.partido_id]||{};
         var pts=(s.kill||0)+(s.ace||0)+(s.block||0)+(s.tip||0);
-        var err=(s.serve_error||0)+(s.reception_error||0)+(s.attack_error||0)+(s.net_fault||0)+(s.blockout||0);
-        var fecha = p ? new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'}) : '';
-        var res = p && p.completado ? p.sets_ganados+'–'+p.sets_perdidos : '';
-        html += '<div class="stcard">'
+        var err=(s.serve_error||0)+(s.reception_serve_error||0)+(s.reception_error||0)+(s.attack_error||0)+(s.net_fault||0)+(s.blockout||0);
+        var fecha=p?new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'}):'';
+        var res=p&&p.completado?p.sets_ganados+'–'+p.sets_perdidos:'';
+        h+='<div class="stcard">'
           +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
           +'<div><div style="font-weight:700;font-size:13px">vs '+(p?p.rival:'?')+'</div>'
           +'<div style="font-size:11px;color:var(--muted)">'+(eq?eq.nombre:'')+(fecha?' · '+fecha:'')+'</div></div>'
@@ -2048,8 +2123,15 @@ async function renderConsultaJugadora(){
           +'<div class="tbox r"><div class="tv" style="font-size:15px">'+(s.serve_error||0)+'</div><div class="tk">F.Saq</div></div>'
           +'</div></div>';
       });
-    } else {
+      return h;
+    }
+
+    var secIndoor = seccionModalidad('indoor','Vóley Indoor','🏐');
+    var secPlaya  = seccionModalidad('playa','Vóley Playa','🏖️');
+    if(!secIndoor && !secPlaya){
       html += '<p style="color:var(--muted);font-size:13px;padding:10px 0">Sin partidos registrados.</p>';
+    } else {
+      html += secIndoor + secPlaya;
     }
     html += '</div>';
     body.innerHTML = html;
@@ -2363,7 +2445,7 @@ async function startPartidoPlaya(pid){
       setsUs:0, setsThem:0,
       scoreUs:0, scoreThem:0,
       stats:{}, setHistory:[], matchOver:false,
-      serveTeam:null, currentServer:null,
+      serveTeam:null, currentServer:null, lastServer:null,
       activePlayer:null,
       teamStats:{rival_error:0,general_error:0},
       afterTimeout:false, timeouts:0, log:[]
@@ -2389,8 +2471,51 @@ async function startPartidoPlaya(pid){
     saveLocal();
     updateMatchUI();
     switchScreen('match');
-    showToast('🏖️ Set 1 — Pareja A');
+    // Preguntar quién saca primero
+    askServeStart();
   }catch(e){showToast('Error al iniciar: '+e.message);}
+}
+
+// ── Saque inicial del set (playa e indoor) ──
+function askServeStart(){
+  document.getElementById('serve-start-title').textContent = '🏐 SAQUE — SET '+state.setNum;
+  document.getElementById('modal-serve-start').style.display='flex';
+}
+
+function serveStartThem(){
+  document.getElementById('modal-serve-start').style.display='none';
+  state.serveTeam='them'; state.currentServer=null;
+  document.getElementById('serve-us').classList.remove('active');
+  document.getElementById('serve-them').classList.add('active');
+  updateServerRow(); updateStatPanel(); saveLocal();
+}
+
+function serveStartUs(){
+  document.getElementById('modal-serve-start').style.display='none';
+  // Elegir cuál jugadora saca
+  askServeWho(function(jid){
+    state.serveTeam=null; state.currentServer=jid;
+    if(state.modalidad==='playa') playaState && (playaState.lastServer=jid);
+    document.getElementById('serve-us').classList.add('active');
+    document.getElementById('serve-them').classList.remove('active');
+    updateServerRow(); updateStatPanel(); saveLocal();
+  });
+}
+
+function askServeWho(callback){
+  var cont = document.getElementById('serve-who-btns');
+  cont.innerHTML='';
+  conv.forEach(function(j,i){
+    var btn=document.createElement('button');
+    btn.className = i===0?'big-btn':'big-btn sec';
+    btn.textContent='#'+(j.dorsal||'—')+' '+(j.alias||j.nombre);
+    btn.onclick=function(){
+      document.getElementById('modal-serve-who').style.display='none';
+      callback(j.jugadora_id);
+    };
+    cont.appendChild(btn);
+  });
+  document.getElementById('modal-serve-who').style.display='flex';
 }
 
 function getCurrentPareja(){
@@ -2442,6 +2567,7 @@ function continuarSetPlaya(){
   var par=playaState.parejaSets[sn];
   saveLocal(); updateMatchUI();
   showToast('🏖️ Set '+sn+' — Pareja '+par);
+  askServeStart();
 }
 
 // ── Override checkSetEnd for playa (15 pts, diff 2) ──
