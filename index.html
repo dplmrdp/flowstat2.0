@@ -511,11 +511,11 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
 <!-- MODAL: ELEGIR PAREJA SET 3 -->
 <div class="overlay" id="modal-set3-playa" style="display:none">
   <div class="modal">
-    <h2 style="color:var(--accent)">🏖️ SET 3</h2>
-    <p>¿Qué pareja disputa el set decisivo?</p>
+    <h2 style="color:var(--accent)">🏖️ SET 3 DECISIVO</h2>
+    <p>Elige las 2 jugadoras que disputan el set</p>
+    <div id="set3-players" style="display:flex;flex-direction:column;gap:8px;margin:14px 0"></div>
     <div class="modal-btns">
-      <button class="big-btn" id="btn-set3-a" onclick="elegirParejaSet3('A')">PAREJA A</button>
-      <button class="big-btn sec" id="btn-set3-b" onclick="elegirParejaSet3('B')">PAREJA B</button>
+      <button class="big-btn" id="set3-confirm" onclick="confirmarParejaSet3()" style="opacity:0.5">Selecciona 2 jugadoras</button>
     </div>
   </div>
 </div>
@@ -1070,13 +1070,16 @@ function logStat(type){
   var playerId = null;
   if(!meta.team){
     if(meta.serve){
-      // Acciones de saque: usar la sacadora actual
-      if(!state.currentServer && state.serveTeam==='us'){
-        showToast('Selecciona la sacadora primero'); return;
+      // Acciones de saque (Pto.Saque, F.Saque): SIEMPRE la sacadora, nunca otra
+      if(!state.currentServer){
+        showToast('⚠️ Indica quién saca primero'); return;
       }
       playerId = state.currentServer;
     } else {
-      // Acciones normales: usar jugadora activa
+      // Fallo de recepción de saque: solo tiene sentido si saca el RIVAL
+      if(type==='reception_serve_error' && state.serveTeam!=='them'){
+        showToast('⚠️ Solo cuando saca el rival'); return;
+      }
       if(!state.activePlayer){ showToast('Selecciona una jugadora primero'); return; }
       playerId = state.activePlayer;
     }
@@ -1686,6 +1689,8 @@ function endSetManual(){
 }
 
 function nextSet(){
+  document.getElementById('modal-set-end').style.display='none';
+  var cb=document.getElementById('set-continue-btn'); if(cb) cb.remove();
   var prevCourt = state.onCourt.slice();
   state.setNum++; state.scoreUs=0; state.scoreThem=0; state.matchOver=false;
   state.pinnedPlayer=null; state.activePlayer=null; state.serveTeam=null; state.currentServer=null;
@@ -1703,15 +1708,12 @@ function nextSet(){
 }
 
 async function finishMatch(){
+  // 1. Guardar estadísticas (best effort)
   try{
     var rj=[];
-    // Guardar stats de TODAS las jugadoras con datos (no solo conv)
-    // En playa, state.stats tiene las 4 jugadoras; conv solo tiene 2
     Object.keys(state.stats).forEach(function(jid){
       var s=state.stats[jid]||{};
-      // Totales (set_num = null)
       Object.keys(s).forEach(function(t){ if(s[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:s[t],set_num:null}); });
-      // Por set
       Object.keys(state.statsBySet).forEach(function(sn){
         var ss=(state.statsBySet[sn]||{})[jid]||{};
         Object.keys(ss).forEach(function(t){ if(ss[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
@@ -1724,11 +1726,16 @@ async function finishMatch(){
       Object.keys(ss).forEach(function(t){ if(ss[t]>0) re.push({partido_id:state.partidoId,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
     });
     await db.saveStats(rj,re);
-    await db.updateResult(state.partidoId,state.setsUs,state.setsThem);
-    var i=allP.findIndex(function(x){return x.id===state.partidoId;});
-    if(i>=0){ allP[i].sets_ganados=state.setsUs; allP[i].sets_perdidos=state.setsThem; allP[i].completado=true; }
-    clearLocal(); showToast('✅ Partido guardado');
-  } catch(e){ showToast('⚠️ Sin conexión — datos locales'); }
+  } catch(e){ showToast('\u26a0\ufe0f Stats sin guardar (sin conexión)'); }
+
+  // 2. Marcar como completado (intento aparte para que no dependa de las stats)
+  try{ await db.updateResult(state.partidoId,state.setsUs,state.setsThem); }catch(e){}
+
+  // 3. Actualizar estado local SIEMPRE
+  var i=allP.findIndex(function(x){return x.id===state.partidoId;});
+  if(i>=0){ allP[i].sets_ganados=state.setsUs; allP[i].sets_perdidos=state.setsThem; allP[i].completado=true; }
+  clearLocal(); showToast('\u2705 Partido finalizado');
+
   renderPartidos(); renderEquipos(); renderPlaya();
   var finishedId = state.partidoId;
   openConsulta('partido');
@@ -1738,7 +1745,7 @@ async function finishMatch(){
   },100);
   var bk=document.createElement('button'); bk.className='big-btn sec';
   bk.style.cssText='margin:12px 16px;font-size:16px;padding:11px;width:calc(100% - 32px)';
-  bk.textContent='← VOLVER AL MENÚ';
+  bk.textContent='\u2190 VOLVER AL MENÚ';
   bk.onclick=function(){ bk.remove(); playaState=null; switchScreen('hub'); };
   setTimeout(function(){ var b=document.getElementById('consulta-body'); if(b) b.appendChild(bk); },400);
 }
@@ -2588,28 +2595,54 @@ function askServeWho(callback){
 function getCurrentPareja(){
   if(!playaState) return conv;
   var par = playaState.parejaSets[playaState.setActual];
+  if(par==='custom') return playaState.parejaSet3||[];
   return par==='A'?playaState.parejaA:playaState.parejaB;
 }
 
 // ── Cambio de pareja al cambiar de set (playa) ──
+var set3Selected = [];
 function playaNextSet(){
   if(!playaState) return;
+  document.getElementById('modal-set-end').style.display='none';
+  var cb=document.getElementById('set-continue-btn'); if(cb) cb.remove();
   playaState.setActual++;
   var sn = playaState.setActual;
   if(sn===3 && !playaState.parejaSets[3]){
-    // Preguntar qué pareja juega el set 3
-    var btnA=document.getElementById('btn-set3-a'), btnB=document.getElementById('btn-set3-b');
-    if(btnA) btnA.textContent='PAREJA A: '+playaState.parejaA.map(function(j){return j.alias||j.nombre.split(' ')[0];}).join(' + ');
-    if(btnB) btnB.textContent='PAREJA B: '+playaState.parejaB.map(function(j){return j.alias||j.nombre.split(' ')[0];}).join(' + ');
+    set3Selected = [];
+    var cont = document.getElementById('set3-players'); cont.innerHTML='';
+    var todas = playaState.parejaA.concat(playaState.parejaB);
+    todas.forEach(function(j){
+      var btn=document.createElement('button');
+      btn.className='big-btn sec'; btn.style.cssText='text-align:left;padding:11px 14px';
+      btn.textContent='#'+(j.dorsal||'\u2014')+' '+(j.alias||j.nombre);
+      btn.onclick=function(){ toggleSet3Player(j.jugadora_id, btn); };
+      cont.appendChild(btn);
+    });
+    document.getElementById('set3-confirm').style.opacity='0.5';
+    document.getElementById('set3-confirm').textContent='Selecciona 2 jugadoras';
     document.getElementById('modal-set3-playa').style.display='flex';
     return;
   }
   continuarSetPlaya();
 }
 
-function elegirParejaSet3(par){
-  if(!playaState) return;
-  playaState.parejaSets[3]=par;
+function toggleSet3Player(jid, btn){
+  var idx = set3Selected.indexOf(jid);
+  if(idx>=0){ set3Selected.splice(idx,1); btn.className='big-btn sec'; }
+  else {
+    if(set3Selected.length>=2){ showToast('Solo 2 jugadoras'); return; }
+    set3Selected.push(jid); btn.className='big-btn';
+  }
+  var c=document.getElementById('set3-confirm');
+  if(set3Selected.length===2){ c.style.opacity='1'; c.textContent='\u25b6 INICIAR SET 3'; }
+  else { c.style.opacity='0.5'; c.textContent='Selecciona 2 jugadoras ('+set3Selected.length+'/2)'; }
+}
+
+function confirmarParejaSet3(){
+  if(set3Selected.length!==2){ showToast('Elige exactamente 2 jugadoras'); return; }
+  var todas = playaState.parejaA.concat(playaState.parejaB);
+  playaState.parejaSet3 = todas.filter(function(j){ return set3Selected.includes(j.jugadora_id); });
+  playaState.parejaSets[3]='custom';
   document.getElementById('modal-set3-playa').style.display='none';
   continuarSetPlaya();
 }
