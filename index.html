@@ -2359,14 +2359,92 @@ async function viewStatsPartido(pid){
   }, 60);
 }
 
-function exportStats(){
-  var txt='ESTADÍSTICAS: '+state.teamName+' vs '+state.rivalName+'\nSets: '+state.setsUs+'–'+state.setsThem+'\n\n';
-  state.setHistory.forEach(function(s,i){txt+='Set '+(i+1)+': '+s.us+'–'+s.them+' ('+(s.won?'Ganado':'Perdido')+')\n';});
-  txt+='\n--- JUGADORAS ---\n';
-  conv.forEach(function(j){var s=state.stats[j.jugadora_id]||{};txt+='\n#'+(j.dorsal||'—')+' '+j.nombre+'\n  Puntos: Remate='+(s.kill||0)+' Saque='+(s.ace||0)+' Bloqueo='+(s.block||0)+' Finta='+(s.tip||0)+'\n  Errores: Saque='+(s.serve_error||0)+' Recep='+(s.reception_error||0)+' Remate='+(s.attack_error||0)+' Red='+(s.net_fault||0)+' Blockout='+(s.blockout||0)+'\n';});
-  txt+='\nEquipo: Fallo rival='+(state.teamStats.rival_error||0)+' | Fallo general='+(state.teamStats.general_error||0)+'\n';
-  if(navigator.share)navigator.share({title:'VóleyStats',text:txt}).catch(function(){});
-  else{var el=document.createElement('textarea');el.value=txt;document.body.appendChild(el);el.select();document.execCommand('copy');document.body.removeChild(el);showToast('📋 Copiado');}
+async function exportStats(){
+  try{
+    // Determinar el partido: el seleccionado en consulta o el partido en vivo
+    var selEl = document.getElementById('c-partido-sel');
+    var pid = (selEl && selEl.value) ? selEl.value : state.partidoId;
+    var p = allP.find(function(x){return x.id===pid;});
+    var eq = p ? allE.find(function(e){return e.id===p.equipo_id;}) : null;
+
+    // Obtener stats: en vivo si es el partido en curso, si no desde BD
+    var sj, se;
+    var isLive = state.partidoId===pid;
+    if(isLive){
+      var live = buildStatsFromState(); sj=live.sj; se=live.se;
+    } else {
+      var r = await db.getStatsP(pid); sj=r[0]||[]; se=r[1]||[];
+    }
+    // Convocatoria completa (todas las jugadoras del partido)
+    var co = await db.getConvocatoria(pid);
+    var jugadoras = (co||[]).map(function(row){
+      return {jugadora_id:row.jugadora_id, dorsal:row.dorsal||'', nombre:row.jugadora.nombre};
+    });
+
+    // Agregar totales (set_num null) por jugadora y equipo
+    function agg(rows, filterFn){
+      var byJ={}, team={rival_error:0,general_error:0};
+      rows.sjf.filter(filterFn).forEach(function(s){ if(!byJ[s.jugadora_id])byJ[s.jugadora_id]={}; byJ[s.jugadora_id][s.tipo]=(byJ[s.jugadora_id][s.tipo]||0)+s.cantidad; });
+      rows.sef.filter(filterFn).forEach(function(s){ team[s.tipo]=(team[s.tipo]||0)+s.cantidad; });
+      return {byJ:byJ, team:team};
+    }
+    var data={sjf:sj, sef:se};
+    var tot=agg(data, function(s){return s.set_num===null||s.set_num===undefined;});
+    // Si no hay filas null, usar todo
+    if(!Object.keys(tot.byJ).length){ tot=agg(data, function(){return true;}); }
+
+    var teamName = p ? (eq?eq.nombre:'Equipo') : state.teamName;
+    var rivalName = p ? p.rival : state.rivalName;
+    var setsTxt = p && p.completado ? p.sets_ganados+'–'+p.sets_perdidos : state.setsUs+'–'+state.setsThem;
+
+    var txt='ESTADÍSTICAS — '+teamName+' vs '+rivalName+'\nResultado: '+setsTxt+'\n';
+    var fecha = p ? new Date(p.fecha).toLocaleDateString('es-ES') : '';
+    if(fecha) txt+='Fecha: '+fecha+'\n';
+
+    // Sets disponibles
+    var setsSet=new Set();
+    sj.forEach(function(s){ if(s.set_num) setsSet.add(s.set_num); });
+    var setsArr=Array.from(setsSet).sort(function(a,b){return a-b;});
+
+    function lineJ(j, s){
+      var pts=(s.kill||0)+(s.ace||0)+(s.block||0)+(s.tip||0);
+      var err=(s.serve_error||0)+(s.reception_serve_error||0)+(s.reception_error||0)+(s.attack_error||0)+(s.net_fault||0)+(s.blockout||0);
+      var nSaq=s.serve_count||0;
+      var l='#'+(j.dorsal||'—')+' '+j.nombre+'\n'
+        +'   Puntos '+pts+' (Rem '+(s.kill||0)+', Saq '+(s.ace||0)+', Bloq '+(s.block||0)+', Finta '+(s.tip||0)+')\n'
+        +'   Errores '+err+' (Saque '+(s.serve_error||0)+', Recep '+((s.reception_serve_error||0)+(s.reception_error||0))+', Remate '+(s.attack_error||0)+', Red/Out '+((s.net_fault||0)+(s.blockout||0))+')\n';
+      if(nSaq>0) l+='   Saques '+nSaq+' ('+Math.round((s.ace||0)/nSaq*100)+'% dir, '+Math.round((s.serve_error||0)/nSaq*100)+'% err)\n';
+      return l;
+    }
+
+    // Totales por jugadora
+    txt+='\n═══ TOTALES DEL PARTIDO ═══\n';
+    var teamTot={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0};
+    jugadoras.forEach(function(j){
+      var s=tot.byJ[j.jugadora_id]||{};
+      Object.keys(teamTot).forEach(function(k){ teamTot[k]+=s[k]||0; });
+    });
+    var tPts=teamTot.kill+teamTot.ace+teamTot.block+teamTot.tip+(tot.team.rival_error||0);
+    var tErr=teamTot.serve_error+teamTot.reception_serve_error+teamTot.reception_error+teamTot.attack_error+teamTot.net_fault+teamTot.blockout+(tot.team.general_error||0);
+    txt+='EQUIPO: Puntos '+tPts+' | Errores '+tErr+' | Fallo rival '+(tot.team.rival_error||0)+'\n\n';
+    jugadoras.map(function(j){
+      var s=tot.byJ[j.jugadora_id]||{};
+      return {j:j,s:s,pts:(s.kill||0)+(s.ace||0)+(s.block||0)+(s.tip||0)};
+    }).sort(function(a,b){return b.pts-a.pts;}).forEach(function(it){ txt+=lineJ(it.j,it.s); });
+
+    // Desglose por set
+    setsArr.forEach(function(sn){
+      txt+='\n─── SET '+sn+' ───\n';
+      var setData=agg(data, function(s){return s.set_num===sn;});
+      jugadoras.map(function(j){
+        var s=setData.byJ[j.jugadora_id]||{};
+        return {j:j,s:s,pts:(s.kill||0)+(s.ace||0)+(s.block||0)+(s.tip||0),any:Object.keys(s).length};
+      }).filter(function(x){return x.any;}).sort(function(a,b){return b.pts-a.pts;}).forEach(function(it){ txt+=lineJ(it.j,it.s); });
+    });
+
+    if(navigator.share) navigator.share({title:'VóleyStats',text:txt}).catch(function(){});
+    else{ var el=document.createElement('textarea');el.value=txt;document.body.appendChild(el);el.select();document.execCommand('copy');document.body.removeChild(el);showToast('📋 Copiado al portapapeles'); }
+  }catch(e){ showToast('Error al exportar: '+e.message); }
 }
 
 function switchStatTab(id,el){
