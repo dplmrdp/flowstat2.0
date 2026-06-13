@@ -619,6 +619,14 @@ function saveLocal(){ try{ localStorage.setItem(LS,JSON.stringify({state:state,c
 function loadLocal(){ try{ var r=localStorage.getItem(LS); return r?JSON.parse(r):null; }catch(e){return null;} }
 function clearLocal(){ try{ localStorage.removeItem(LS); }catch(e){} }
 
+// Copia de seguridad local de estadísticas por partido (resiliencia ante fallos de BD)
+function saveStatsBackup(pid, rj, re){
+  try{ localStorage.setItem('voley_stats_'+pid, JSON.stringify({sj:rj, se:re, ts:Date.now()})); }catch(e){}
+}
+function loadStatsBackup(pid){
+  try{ var r=localStorage.getItem('voley_stats_'+pid); return r?JSON.parse(r):null; }catch(e){ return null; }
+}
+
 // Seguimiento de partidos que se han iniciado (para distinguir "no iniciado" de "en curso")
 var STARTED_LS='voley_started';
 function getStartedSet(){ try{ return JSON.parse(localStorage.getItem(STARTED_LS)||'[]'); }catch(e){ return []; } }
@@ -1778,28 +1786,30 @@ function nextSet(){
 }
 
 async function saveMatchResult(){
-  // 1. Guardar estadísticas (best effort)
-  try{
-    var rj=[];
-    Object.keys(state.stats).forEach(function(jid){
-      var s=state.stats[jid]||{};
-      Object.keys(s).forEach(function(t){ if(s[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:s[t],set_num:null}); });
-      Object.keys(state.statsBySet).forEach(function(sn){
-        var ss=(state.statsBySet[sn]||{})[jid]||{};
-        Object.keys(ss).forEach(function(t){ if(ss[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
-      });
+  // Construir filas de estadísticas
+  var rj=[];
+  Object.keys(state.stats).forEach(function(jid){
+    var s=state.stats[jid]||{};
+    Object.keys(s).forEach(function(t){ if(s[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:s[t],set_num:null}); });
+    Object.keys(state.statsBySet).forEach(function(sn){
+      var ss=(state.statsBySet[sn]||{})[jid]||{};
+      Object.keys(ss).forEach(function(t){ if(ss[t]>0) rj.push({partido_id:state.partidoId,jugadora_id:jid,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
     });
-    var re=[];
-    Object.keys(state.teamStats).forEach(function(t){ if(state.teamStats[t]>0) re.push({partido_id:state.partidoId,tipo:t,cantidad:state.teamStats[t],set_num:null}); });
-    Object.keys(state.teamStatsBySet).forEach(function(sn){
-      var ss=state.teamStatsBySet[sn]||{};
-      Object.keys(ss).forEach(function(t){ if(ss[t]>0) re.push({partido_id:state.partidoId,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
-    });
-    await db.saveStats(state.partidoId,rj,re);
-  } catch(e){ showToast('\u26a0\ufe0f Stats sin guardar (sin conexión)'); }
-  // 2. Marcar como completado
+  });
+  var re=[];
+  Object.keys(state.teamStats).forEach(function(t){ if(state.teamStats[t]>0) re.push({partido_id:state.partidoId,tipo:t,cantidad:state.teamStats[t],set_num:null}); });
+  Object.keys(state.teamStatsBySet).forEach(function(sn){
+    var ss=state.teamStatsBySet[sn]||{};
+    Object.keys(ss).forEach(function(t){ if(ss[t]>0) re.push({partido_id:state.partidoId,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
+  });
+  // 1. Copia de seguridad LOCAL siempre (sobrevive aunque la BD falle)
+  saveStatsBackup(state.partidoId, rj, re);
+  // 2. Intentar guardar en BD
+  try{ await db.saveStats(state.partidoId,rj,re); }
+  catch(e){ showToast('\u26a0\ufe0f Stats en local (sin conexión a BD)'); }
+  // 3. Marcar como completado
   try{ await db.updateResult(state.partidoId,state.setsUs,state.setsThem); }catch(e){}
-  // 3. Estado local SIEMPRE
+  // 4. Estado local SIEMPRE
   var i=allP.findIndex(function(x){return x.id===state.partidoId;});
   if(i>=0){ allP[i].sets_ganados=state.setsUs; allP[i].sets_perdidos=state.setsThem; allP[i].completado=true; }
   clearLocal();
@@ -2046,9 +2056,10 @@ async function onConsultaPartidoChange(){
       nSets = Object.keys(state.statsBySet).map(function(x){return parseInt(x);}).reduce(function(a,b){return Math.max(a,b);},1);
     } else {
       var r2 = await db.getStatsP(pid);
+      var rowsForSets = (r2[0]||[]).concat(r2[1]||[]);
+      if(!rowsForSets.length){ var bk=loadStatsBackup(pid); if(bk){ rowsForSets=(bk.sj||[]).concat(bk.se||[]); } }
       var allSets = new Set();
-      (r2[0]||[]).forEach(function(s){ if(s.set_num) allSets.add(s.set_num); });
-      (r2[1]||[]).forEach(function(s){ if(s.set_num) allSets.add(s.set_num); });
+      rowsForSets.forEach(function(s){ if(s.set_num) allSets.add(s.set_num); });
       nSets = allSets.size > 0 ? Math.max.apply(null, Array.from(allSets)) : (p?(p.sets_ganados||0)+(p.sets_perdidos||0):0);
     }
     var selEl = document.getElementById('c-set-sel');
@@ -2140,10 +2151,15 @@ async function renderConsultaPartido(){
     } else {
       var r = await db.getStatsP(pid);
       sj = r[0]||[]; se = r[1]||[];
-      // Red de seguridad: si la BD está vacía pero tenemos los datos en memoria
+      // Red de seguridad 1: si la BD está vacía pero tenemos los datos en memoria
       if(!sj.length && state.partidoId===pid && state.stats && Object.keys(state.stats).length){
         var live2 = buildStatsFromState();
         sj = live2.sj; se = live2.se;
+      }
+      // Red de seguridad 2: copia de seguridad local del partido
+      if(!sj.length){
+        var bk = loadStatsBackup(pid);
+        if(bk){ sj = bk.sj||[]; se = bk.se||[]; }
       }
     }
     var co = await db.getConvocatoria(pid);
@@ -2151,33 +2167,36 @@ async function renderConsultaPartido(){
     var jugadoras = (co||[]).map(function(row){
       return {jugadora_id:row.jugadora_id, dorsal:row.dorsal||'', nombre:row.jugadora.nombre, alias:row.jugadora.alias||row.jugadora.nombre, posicion:row.jugadora.posicion};
     });
-
-    // Aggregate stats — filter by set if needed
+    // Asegurar que TODA jugadora con estadísticas aparece (aunque no esté en convocatoria)
+    var presentes={}; jugadoras.forEach(function(j){ presentes[j.jugadora_id]=true; });
+    sj.forEach(function(s){
+      if(s.jugadora_id && !presentes[s.jugadora_id]){
+        presentes[s.jugadora_id]=true;
+        var jj=allJ.find(function(x){return x.id===s.jugadora_id;});
+        jugadoras.push({jugadora_id:s.jugadora_id, dorsal:'', nombre:jj?jj.nombre:'Jugadora', alias:jj?(jj.alias||jj.nombre):'', posicion:jj?jj.posicion:null});
+      }
+    });
     var ts = {}, tts = {rival_error:0,general_error:0};
     if(setFilter === 'all'){
-      // Totales: filas con set_num IS NULL
-      sj.filter(function(s){return s.set_num===null||s.set_num===undefined;}).forEach(function(s){
+      // Sumar las filas por set (siempre presentes y sin duplicar). Si no hay, usar las de totales (set_num null)
+      var perSetJ = sj.filter(function(s){return s.set_num!==null&&s.set_num!==undefined;});
+      var rowsJ = perSetJ.length ? perSetJ : sj;
+      rowsJ.forEach(function(s){
         if(!ts[s.jugadora_id]) ts[s.jugadora_id]={};
-        ts[s.jugadora_id][s.tipo]=(ts[s.jugadora_id][s.tipo]||0)+s.cantidad;
+        ts[s.jugadora_id][s.tipo]=(ts[s.jugadora_id][s.tipo]||0)+(s.cantidad||0);
       });
-      se.filter(function(s){return s.set_num===null||s.set_num===undefined;}).forEach(function(s){
-        tts[s.tipo]=(tts[s.tipo]||0)+s.cantidad;
-      });
-      // Fallback: si no hay filas null (partido antiguo), sumar todo
-      if(!Object.keys(ts).length){
-        jugadoras.forEach(function(j){ ts[j.jugadora_id]={}; });
-        sj.forEach(function(s){ if(!ts[s.jugadora_id]) ts[s.jugadora_id]={}; ts[s.jugadora_id][s.tipo]=(ts[s.jugadora_id][s.tipo]||0)+s.cantidad; });
-        se.forEach(function(s){ tts[s.tipo]=(tts[s.tipo]||0)+s.cantidad; });
-      }
+      var perSetE = se.filter(function(s){return s.set_num!==null&&s.set_num!==undefined;});
+      var rowsE = perSetE.length ? perSetE : se;
+      rowsE.forEach(function(s){ tts[s.tipo]=(tts[s.tipo]||0)+(s.cantidad||0); });
     } else {
       var sn = parseInt(setFilter);
       jugadoras.forEach(function(j){ ts[j.jugadora_id]={}; });
       sj.filter(function(s){return s.set_num===sn;}).forEach(function(s){
         if(!ts[s.jugadora_id]) ts[s.jugadora_id]={};
-        ts[s.jugadora_id][s.tipo]=(ts[s.jugadora_id][s.tipo]||0)+s.cantidad;
+        ts[s.jugadora_id][s.tipo]=(ts[s.jugadora_id][s.tipo]||0)+(s.cantidad||0);
       });
       se.filter(function(s){return s.set_num===sn;}).forEach(function(s){
-        tts[s.tipo]=(tts[s.tipo]||0)+s.cantidad;
+        tts[s.tipo]=(tts[s.tipo]||0)+(s.cantidad||0);
       });
     }
 
@@ -2374,6 +2393,7 @@ async function exportStats(){
       var live = buildStatsFromState(); sj=live.sj; se=live.se;
     } else {
       var r = await db.getStatsP(pid); sj=r[0]||[]; se=r[1]||[];
+      if(!sj.length){ var bk=loadStatsBackup(pid); if(bk){ sj=bk.sj||[]; se=bk.se||[]; } }
     }
     // Convocatoria completa (todas las jugadoras del partido)
     var co = await db.getConvocatoria(pid);
