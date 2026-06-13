@@ -100,6 +100,7 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
 .stpanel.blocked{pointer-events:none;position:relative}
 .stpanel.blocked::after{content:'🏐 Elige sacadora primero';position:absolute;inset:0;background:rgba(10,14,26,0.82);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:0.5px;border-radius:8px}
 .stpanel.blocked .sbt{opacity:0.3}
+.sbt.disabled{opacity:0.28;pointer-events:none;filter:grayscale(0.85)}
 @keyframes fpt{0%{background:rgba(245,166,35,0.35)}100%{background:var(--surface2)}}
 @keyframes fer{0%{background:rgba(232,55,74,0.35)}100%{background:var(--surface2)}}
 @keyframes ftm{0%{background:rgba(46,204,113,0.35)}100%{background:var(--surface2)}}
@@ -239,24 +240,24 @@ header{padding:14px 18px 12px;display:flex;align-items:center;justify-content:sp
     <div class="sttitle">⚡ Puntos en ataque</div>
     <div class="stgrid">
       <button class="sbt pt" onclick="logStat('rival_error')" style="border-color:rgba(46,204,113,0.5)"><span class="si">❌</span><span class="sl" style="color:var(--green)">Fallo rival</span><span class="sc" id="cnt-rival_error">0</span></button>
-      <button class="sbt pt" onclick="logStat('ace')"><span class="si">🎯</span><span class="sl">Pto. Saque</span><span class="sc" id="cnt-ace">0</span></button>
+      <button class="sbt pt" data-stat="ace" onclick="logStat('ace')"><span class="si">🎯</span><span class="sl">Pto. Saque</span><span class="sc" id="cnt-ace">0</span></button>
       <button class="sbt pt" onclick="logStat('kill')"><span class="si">💥</span><span class="sl">Pto. Remate</span><span class="sc" id="cnt-kill">0</span></button>
       <button class="sbt pt" onclick="logStat('block')"><span class="si">🛡️</span><span class="sl">Pto. Bloqueo</span><span class="sc" id="cnt-block">0</span></button>
       <button class="sbt pt" onclick="logStat('tip')"><span class="si">🤙</span><span class="sl">Pto. Finta</span><span class="sc" id="cnt-tip">0</span></button>
     </div>
     <div class="sttitle">❌ Errores</div>
     <div class="stgrid" style="grid-template-columns:repeat(4,1fr)">
-      <button class="sbt er" onclick="logStat('serve_error')"><span class="si">🚫</span><span class="sl">F. Saque</span><span class="sc" id="cnt-serve_error">0</span></button>
-      <button class="sbt er" onclick="logStat('reception_serve_error')"><span class="si">😬</span><span class="sl">F.Rec.Saque</span><span class="sc" id="cnt-reception_serve_error">0</span></button>
+      <button class="sbt er" data-stat="serve_error" onclick="logStat('serve_error')"><span class="si">🚫</span><span class="sl">F. Saque</span><span class="sc" id="cnt-serve_error">0</span></button>
+      <button class="sbt er" data-stat="reception_serve_error" onclick="logStat('reception_serve_error')"><span class="si">😬</span><span class="sl">F.Rec.Saque</span><span class="sc" id="cnt-reception_serve_error">0</span></button>
       <button class="sbt er" onclick="logStat('reception_error')"><span class="si">🤦</span><span class="sl">F. Recep.</span><span class="sc" id="cnt-reception_error">0</span></button>
       <button class="sbt er" onclick="logStat('attack_error')"><span class="si">📉</span><span class="sl">F. Remate</span><span class="sc" id="cnt-attack_error">0</span></button>
-      <button class="sbt er" onclick="logStat('net_fault')"><span class="si">🕸️</span><span class="sl">Falta red</span><span class="sc" id="cnt-net_fault">0</span></button>
+      <button class="sbt er" data-stat="net_fault" onclick="logStat('net_fault')"><span class="si">🚷</span><span class="sl">Falta</span><span class="sc" id="cnt-net_fault">0</span></button>
       <button class="sbt er" onclick="logStat('blockout')"><span class="si">🏀</span><span class="sl">Blockout</span><span class="sc" id="cnt-blockout">0</span></button>
       <button class="sbt er" onclick="logStat('general_error')" style="border-color:rgba(107,122,153,0.4)"><span class="si">⚠️</span><span class="sl" style="color:var(--muted)">F. General</span><span class="sc" id="cnt-general_error">0</span></button>
     </div>
   </div>
   <div class="botbar">
-    <button class="botbtn bl" onclick="openSub()">🔄 Cambio</button>
+    <button class="botbtn bl" id="btn-cambio" onclick="openSub()">🔄 Cambio</button>
     <button class="botbtn gn" onclick="showStats()">📊 Stats</button>
     <button class="botbtn" id="timeout-btn" onclick="callTimeout()" style="color:var(--accent2);border-color:rgba(232,55,74,0.3)">⏱️ T.Muerto</button>
     <button class="botbtn" onclick="endSetManual()">Set →</button>
@@ -599,10 +600,14 @@ var db = {
   getConvocatoria: function(pid){ return sbFetch('partido_jugadoras?partido_id=eq.'+pid+'&select=*,jugadora:jugadoras(id,nombre,alias,posicion)'); },
   setConvocatoria: function(rows){ return sbFetch('partido_jugadoras', {method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify(rows)}); },
   getStatsP: function(pid){ return Promise.all([sbFetch('stats_jugadora?partido_id=eq.'+pid+'&select=*'), sbFetch('stats_equipo?partido_id=eq.'+pid+'&select=*')]); },
-  saveStats: function(rj,re){
-    var p1 = rj.length ? sbFetch('stats_jugadora',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rj)}) : Promise.resolve();
-    var p2 = re.length ? sbFetch('stats_equipo',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(re)}) : Promise.resolve();
-    return Promise.all([p1,p2]);
+  saveStats: async function(pid,rj,re){
+    // Borrar stats previas del partido (evita duplicados y dependencia de constraints)
+    if(pid){
+      try{ await sbFetch('stats_jugadora?partido_id=eq.'+pid,{method:'DELETE',prefer:'return=minimal'}); }catch(e){}
+      try{ await sbFetch('stats_equipo?partido_id=eq.'+pid,{method:'DELETE',prefer:'return=minimal'}); }catch(e){}
+    }
+    if(rj.length) await sbFetch('stats_jugadora',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(rj)});
+    if(re.length) await sbFetch('stats_equipo',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(re)});
   }
 };
 
@@ -613,6 +618,24 @@ var LS = 'voley_v3';
 function saveLocal(){ try{ localStorage.setItem(LS,JSON.stringify({state:state,conv:conv})); }catch(e){} }
 function loadLocal(){ try{ var r=localStorage.getItem(LS); return r?JSON.parse(r):null; }catch(e){return null;} }
 function clearLocal(){ try{ localStorage.removeItem(LS); }catch(e){} }
+
+// Seguimiento de partidos que se han iniciado (para distinguir "no iniciado" de "en curso")
+var STARTED_LS='voley_started';
+function getStartedSet(){ try{ return JSON.parse(localStorage.getItem(STARTED_LS)||'[]'); }catch(e){ return []; } }
+function markStarted(pid){ try{ var a=getStartedSet(); if(a.indexOf(pid)<0){ a.push(pid); localStorage.setItem(STARTED_LS,JSON.stringify(a)); } }catch(e){} }
+function isStarted(pid){ return getStartedSet().indexOf(pid)>=0; }
+// Estado de un partido: 'finalizado' | 'curso' | 'noiniciado'
+function matchStatus(p){
+  if(p.completado) return 'finalizado';
+  if(isStarted(p.id) || (p.sets_ganados+p.sets_perdidos)>0) return 'curso';
+  return 'noiniciado';
+}
+function statusBadge(p){
+  var s=matchStatus(p);
+  if(s==='finalizado') return '<span class="badge" style="background:rgba(46,204,113,0.15);color:var(--green);font-size:9px">✓ FINALIZADO</span>';
+  if(s==='curso')      return '<span class="badge" style="background:rgba(245,166,35,0.15);color:var(--accent);font-size:9px">● EN CURSO</span>';
+  return '<span class="badge" style="background:rgba(107,122,153,0.15);color:var(--muted);font-size:9px">○ NO INICIADO</span>';
+}
 
 // ══════════════════════════════════════
 // ESTADO GLOBAL
@@ -632,7 +655,7 @@ var META = {
   reception_serve_error:   {label:'F.Rec. saque rival',  point:true, us:false, team:false, serve:false},
   reception_error:         {label:'Fallo recepción',     point:true, us:false, team:false, serve:false},
   attack_error:            {label:'Fallo remate',        point:true, us:false, team:false, serve:false},
-  net_fault:               {label:'Falta red',           point:true, us:false, team:false, serve:false},
+  net_fault:               {label:'Falta',               point:true, us:false, team:false, serve:false},
   blockout:                {label:'Blockout',            point:true, us:false, team:false, serve:false},
   general_error:           {label:'Fallo general',       point:true, us:false, team:true,  serve:false},
   serve_count:             {label:'Saque',               point:false,us:false, team:false, serve:true,  hidden:true},
@@ -650,7 +673,7 @@ function mkState(){
     liberoId:null,      // jugadora_id de la libero (si aplica)
     liberoSubId:null,   // central actualmente fuera (sustituido por libero)
     onCourt:[],activePlayer:null,pinnedPlayer:null,serveTeam:null,
-    currentServer:null,
+    currentServer:null,lastServer:null,serverChosen:false,modalidad:'indoor',
     afterTimeout:false,timeouts:0,
     setNum:1,setsUs:0,setsThem:0,scoreUs:0,scoreThem:0,
     setHistory:[],stats:{},statsBySet:{},
@@ -766,16 +789,18 @@ function renderPartidos(){
   indoorP.forEach(function(p){
     var eq=allE.find(function(e){return e.id===p.equipo_id;});
     var fecha=new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'});
-    var res=p.completado?(p.sets_ganados+'–'+p.sets_perdidos):'En curso';
+    var res=p.completado?(p.sets_ganados+'–'+p.sets_perdidos):(matchStatus(p)==='curso'?'En curso':'—');
     var col=!p.completado?'var(--accent)':p.sets_ganados>p.sets_perdidos?'var(--green)':'var(--accent2)';
+    var estado=statusBadge(p);
     var c=document.createElement('div'); c.className='card';
     c.innerHTML='<div style="display:flex;align-items:center;gap:10px">'
       +'<div style="flex:1"><div class="card-title">vs '+p.rival+'</div>'
-      +'<div class="card-sub">'+(eq?eq.nombre:'—')+' · '+fecha+(p.competicion?' · '+p.competicion:'')+'</div></div>'
+      +'<div class="card-sub">'+(eq?eq.nombre:'—')+' · '+fecha+(p.competicion?' · '+p.competicion:'')+'</div>'
+      +'<div style="margin-top:3px">'+estado+'</div></div>'
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;color:'+col+'">'+res+'</div></div>'
       +'<div class="card-actions">'
       +'<button class="abt a" data-a="ept" data-id="'+p.id+'">✏️ Editar</button>'
-      +(!p.completado?'<button class="abt g" data-a="spt" data-id="'+p.id+'">⚡ Iniciar</button>':'')
+      +(!p.completado?'<button class="abt g" data-a="spt" data-id="'+p.id+'">⚡ '+(matchStatus(p)==='curso'?'Continuar':'Iniciar')+'</button>':'')
       +'<button class="abt b" data-a="stpt" data-id="'+p.id+'">📊 Stats</button>'
       +'</div>';
     el.appendChild(c);
@@ -928,7 +953,7 @@ var editPtId=null, convTemp=[], _pendingStart=false;
 function openModalPartido(id, presetEqId){
   editPtId=id||null; _pendingStart=false;
   document.getElementById('mpt-title').textContent=id?'EDITAR PARTIDO':'NUEVO PARTIDO';
-  document.getElementById('btn-iniciar').style.display=id?'flex':'none';
+  document.getElementById('btn-iniciar').style.display='flex';
   document.getElementById('btn-del-pt').style.display=id?'flex':'none';
   // Default fecha = today
   var today=new Date().toISOString().split('T')[0];
@@ -1036,6 +1061,7 @@ async function startById(pid){
       state.stats[j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};
       state.statsBySet[1][j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};
     });
+    markStarted(pid);
     saveLocal(); updateMatchUI(); switchScreen('match');
     // Abrir selección de titulares automáticamente
     openSubForLineup();
@@ -1097,23 +1123,27 @@ function logStat(type){
     if(!state.statsBySet[sn]) state.statsBySet[sn]={};
     if(!state.statsBySet[sn][playerId]) state.statsBySet[sn][playerId]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0};
     state.statsBySet[sn][playerId][type]=(state.statsBySet[sn][playerId][type]||0)+1;
-    // Contar saque si es acción de saque (ace o serve_error)
-    if(meta.serve && type!=='serve_count' && type!=='serve_after_timeout'){
-      state.stats[playerId].serve_count=(state.stats[playerId].serve_count||0)+1;
-      state.statsBySet[sn][playerId].serve_count=(state.statsBySet[sn][playerId].serve_count||0)+1;
-      // Si es el primer saque tras tiempo muerto, contarlo
-      if(state.afterTimeout){
-        state.stats[playerId].serve_after_timeout=(state.stats[playerId].serve_after_timeout||0)+1;
-        state.statsBySet[sn][playerId].serve_after_timeout=(state.statsBySet[sn][playerId].serve_after_timeout||0)+1;
-        state.afterTimeout = false;
-        // Quitar marcado visual del botón
-        var btn=document.getElementById('timeout-btn');
-        if(btn){ btn.style.background=''; btn.style.borderColor=''; }
-      }
-    }
     if(!meta.hidden){
       var el2=document.getElementById('cnt-'+type);
       if(el2) el2.textContent=conv.reduce(function(s,j){return s+((state.statsBySet[sn][j.jugadora_id]||{})[type]||0);},0);
+    }
+  }
+
+  // ── Conteo de saques: cada punto jugado mientras sacamos = 1 saque de la sacadora ──
+  var weAreServing = state.currentServer && state.serveTeam!=='them';
+  if(meta.point && weAreServing && state.currentServer){
+    var srvId=state.currentServer;
+    if(!state.stats[srvId]) state.stats[srvId]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};
+    if(!state.statsBySet[sn]) state.statsBySet[sn]={};
+    if(!state.statsBySet[sn][srvId]) state.statsBySet[sn][srvId]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};
+    state.stats[srvId].serve_count=(state.stats[srvId].serve_count||0)+1;
+    state.statsBySet[sn][srvId].serve_count=(state.statsBySet[sn][srvId].serve_count||0)+1;
+    if(state.afterTimeout){
+      state.stats[srvId].serve_after_timeout=(state.stats[srvId].serve_after_timeout||0)+1;
+      state.statsBySet[sn][srvId].serve_after_timeout=(state.statsBySet[sn][srvId].serve_after_timeout||0)+1;
+      state.afterTimeout=false;
+      var btn0=document.getElementById('timeout-btn');
+      if(btn0){ btn0.style.background=''; btn0.style.borderColor=''; }
     }
   }
 
@@ -1136,15 +1166,13 @@ function logStat(type){
     } else {
       // Nosotras ganamos
       if(state.modalidad==='playa'){
-        // Playa: si recuperamos saque, saca la OTRA jugadora (alternancia)
+        // Playa: al recuperar saque, elegir (1ª vez del partido) o alternar
         if(state.serveTeam==='them'){
-          var prev = playaState ? playaState.lastServer : state.currentServer;
-          var otra = conv.find(function(j){ return j.jugadora_id !== prev; });
-          state.currentServer = otra ? otra.jugadora_id : (conv[0] && conv[0].jugadora_id);
-          if(playaState) playaState.lastServer = state.currentServer;
+          chooseOurServer();
+        } else {
+          // Ya sacábamos y ganamos → misma jugadora sigue
+          state.serveTeam = null;
         }
-        // Si ya sacábamos y ganamos → misma jugadora sigue (no cambiar currentServer)
-        state.serveTeam = null;
       } else if(state.serveTeam==='them'){
         // Indoor: recuperamos el saque → ROTAR
         if(state.rotation.length) rotate(1);
@@ -1196,11 +1224,37 @@ function undoLast(){
 function updateStatPanel(){
   var panel = document.getElementById('stat-panel');
   if(!panel) return;
-  // En playa nunca se bloquea (saque automático)
-  if(state.modalidad==='playa'){ panel.classList.remove('blocked'); return; }
-  var needsServer = state.serveTeam==='us' && !state.currentServer;
-  if(needsServer) panel.classList.add('blocked');
-  else panel.classList.remove('blocked');
+  if(state.modalidad==='playa'){
+    // Bloquear si nos toca sacar pero aún no hay sacadora elegida
+    var playaNeedsServer = state.serveTeam!=='them' && !state.currentServer;
+    if(playaNeedsServer) panel.classList.add('blocked'); else panel.classList.remove('blocked');
+  } else {
+    var needsServer = state.serveTeam==='us' && !state.currentServer;
+    if(needsServer) panel.classList.add('blocked');
+    else panel.classList.remove('blocked');
+  }
+  updateButtonStates();
+}
+
+// Desactiva visualmente los botones que no tienen sentido en el contexto actual
+function updateButtonStates(){
+  var serving = !!state.currentServer;          // tenemos sacadora = sacamos nosotras
+  var rivalServing = state.serveTeam==='them';  // saca el rival
+  var ap = state.activePlayer;
+  // Acciones de saque (Pto. Saque, F. Saque): solo la sacadora.
+  // Habilitadas si sacamos y (no hay jugadora seleccionada o es la propia sacadora)
+  var serveOk = serving && (ap===null || ap===state.currentServer);
+  setBtnEnabled('ace', serveOk);
+  setBtnEnabled('serve_error', serveOk);
+  // Fallo recepción de saque: solo cuando saca el rival
+  setBtnEnabled('reception_serve_error', rivalServing);
+}
+
+function setBtnEnabled(type, ok){
+  var b=document.querySelector('[data-stat="'+type+'"]');
+  if(!b) return;
+  if(ok) b.classList.remove('disabled');
+  else b.classList.add('disabled');
 }
 
 function setServe(t){
@@ -1275,6 +1329,7 @@ function renderPlayerSelector(){
     conv.forEach(function(j){
       makePlayaTile(j, backRow, serveMode);
     });
+    updateButtonStates();
     return;
   }
   frontRow.style.display='';
@@ -1291,12 +1346,13 @@ function renderPlayerSelector(){
     var isLibero = state.liberoId===jid;
     var posCol   = j.posicion?'var(--pos-'+j.posicion+')':'var(--accent)';
     var tile=document.createElement('div');
-    tile.className = (isServer||pinned)?'ptile pinned':selected?'ptile sel':'ptile';
+    // La sacadora NO se resalta; solo lleva el icono del balón
+    tile.className = pinned?'ptile pinned':selected?'ptile sel':'ptile';
     if(isLibero) tile.style.borderStyle='dashed';
-    var numColor = isServer?'var(--green)':(pinned?'var(--purple)':posCol);
+    var numColor = pinned?'var(--purple)':posCol;
     var posAbbr  = j.posicion?(POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase():'';
     tile.innerHTML =
-      (isServer?'<span style="font-size:9px;position:absolute;top:2px;left:3px">🏐</span>':'')
+      (isServer?'<span style="font-size:11px;position:absolute;top:2px;left:3px">🏐</span>':'')
       +'<span style="font-size:8px;color:var(--border);position:absolute;top:2px;right:3px;font-weight:700">'+posNum+'</span>'
       +'<span class="pnum" style="color:'+numColor+'">#'+(j.dorsal||'—')+'</span>'
       +'<span class="pnm">'+(j.alias||j.nombre.split(' ')[0])+'</span>'
@@ -1330,25 +1386,20 @@ function renderPlayerSelector(){
   }
   [4,3,2].forEach(function(p,i){ makeTile(frontPos[i],p,frontRow); });
   [5,6,1].forEach(function(p,i){ makeTile(backPos[i], p,backRow); });
+  updateButtonStates();
 }
 
 function makePlayaTile(j, container, serveMode){
   var jid = j.jugadora_id;
   var selected = state.activePlayer===jid;
   var isServer = state.currentServer===jid;
-  var posCol   = j.posicion?'var(--pos-'+j.posicion+')':'var(--accent)';
   var tile=document.createElement('div');
-  tile.className='ptile';
-  if(isServer){ tile.style.borderColor='var(--green)'; tile.style.background='rgba(46,204,113,0.12)'; }
-  else if(selected){ tile.className='ptile sel'; }
-  var numColor = isServer?'var(--green)':posCol;
-  var posAbbr  = j.posicion?(POSL[j.posicion]||j.posicion).slice(0,4).toUpperCase():'';
+  // La sacadora solo lleva el balón; la seleccionada para registrar va en naranja
+  tile.className = selected?'ptile sel':'ptile';
   tile.innerHTML =
-    (isServer?'<span style="font-size:11px;position:absolute;top:3px;left:4px">🏐</span>':'')
-    +'<span class="pnum" style="color:'+numColor+'">#'+(j.dorsal||'—')+'</span>'
-    +'<span class="pnm">'+(j.alias||j.nombre.split(' ')[0])+'</span>'
-    +(isServer?'<span style="font-size:8px;color:var(--green);font-weight:700">SACA</span>'
-      :(posAbbr?'<span style="font-size:8px;color:'+numColor+';font-weight:700;opacity:0.8">'+posAbbr+'</span>':''));
+    (isServer?'<span style="font-size:13px;position:absolute;top:3px;left:5px">🏐</span>':'')
+    +'<span class="pnum" style="color:var(--accent)">#'+(j.dorsal||'—')+'</span>'
+    +'<span class="pnm">'+(j.alias||j.nombre.split(' ')[0])+'</span>';
   (function(jid){
     tile.onclick=function(){
       state.activePlayer = state.activePlayer===jid ? null : jid;
@@ -1596,18 +1647,29 @@ function updateMatchUI(){
   var frontRow=document.getElementById('front-row');
   var backRow=document.getElementById('back-row');
   var rotBtns=document.querySelector('#court-field > div:last-child');
+  var btnCambio=document.getElementById('btn-cambio');
   if(state.modalidad!=='playa'){
     if(frontRow) frontRow.style.display='';
     if(backRow) backRow.style.gridTemplateColumns='';
     if(rotBtns) rotBtns.style.display='';
+    if(btnCambio) btnCambio.style.display='';
   } else {
     if(rotBtns) rotBtns.style.display='none';
+    if(btnCambio) btnCambio.style.display='none';
   }
   document.getElementById('m-team-name').textContent = state.teamName;
   document.getElementById('m-rival-name').textContent = state.rivalName;
   document.getElementById('m-set-num').textContent = state.setNum;
   document.getElementById('serve-us').classList.toggle('active', state.serveTeam==='us');
   document.getElementById('serve-them').classList.toggle('active', state.serveTeam==='them');
+  // Sincronizar contadores de los botones con el set actual
+  var snUI=state.setNum;
+  Object.keys(META).forEach(function(k){
+    if(META[k].hidden) return;
+    var el=document.getElementById('cnt-'+k); if(!el) return;
+    if(META[k].team){ el.textContent=(state.teamStatsBySet[snUI]||{})[k]||0; }
+    else { el.textContent=conv.reduce(function(s,j){return s+(((state.statsBySet[snUI]||{})[j.jugadora_id]||{})[k]||0);},0); }
+  });
   updateScoreUI();
   renderPlayerSelector();
   renderSetDots();
@@ -1672,15 +1734,23 @@ function endSet(won){
   document.getElementById('set-end-title').textContent = won?'🏆 ¡SET GANADO!':'💪 Set perdido';
   document.getElementById('set-end-body').textContent = state.scoreUs+'–'+state.scoreThem+' · Sets: '+state.setsUs+'–'+state.setsThem;
   document.getElementById('set-end-next').style.display = over?'none':'flex';
-  document.getElementById('set-end-finish').textContent = over?'🎉 VER RESUMEN':'Terminar partido';
   document.getElementById('modal-set-end').style.display = 'flex';
   state.matchOver = true;
-  document.getElementById('set-end-stats').onclick = function(){
-    document.getElementById('modal-set-end').style.display='none';
-    showSetStats(setJustEnded, function(){ document.getElementById('modal-set-end').style.display='flex'; document.getElementById('stats-back-btn').onclick=showMatch; }, '← Volver');
-  };
-  document.getElementById('set-end-next').onclick = function(){ document.getElementById('modal-set-end').style.display='none'; nextSet(); };
-  document.getElementById('set-end-finish').onclick = function(){ document.getElementById('modal-set-end').style.display='none'; finishMatch(); };
+  if(over){
+    document.getElementById('set-end-stats').textContent = '📊 Ver resumen del partido';
+    document.getElementById('set-end-stats').onclick = function(){ document.getElementById('modal-set-end').style.display='none'; finishMatch(); };
+    document.getElementById('set-end-finish').textContent = '🏠 Finalizar y volver al menú';
+    document.getElementById('set-end-finish').onclick = function(){ document.getElementById('modal-set-end').style.display='none'; finishToHub(); };
+  } else {
+    document.getElementById('set-end-stats').textContent = '📊 Estadísticas del set';
+    document.getElementById('set-end-stats').onclick = function(){
+      document.getElementById('modal-set-end').style.display='none';
+      showSetStats(setJustEnded, function(){ document.getElementById('modal-set-end').style.display='flex'; document.getElementById('stats-back-btn').onclick=showMatch; }, '← Volver');
+    };
+    document.getElementById('set-end-next').onclick = function(){ document.getElementById('modal-set-end').style.display='none'; nextSet(); };
+    document.getElementById('set-end-finish').textContent = '🏠 Terminar y salir';
+    document.getElementById('set-end-finish').onclick = function(){ document.getElementById('modal-set-end').style.display='none'; finishToHub(); };
+  }
 }
 
 function endSetManual(){
@@ -1707,7 +1777,7 @@ function nextSet(){
   openSubForLineup(prevCourt);
 }
 
-async function finishMatch(){
+async function saveMatchResult(){
   // 1. Guardar estadísticas (best effort)
   try{
     var rj=[];
@@ -1725,20 +1795,31 @@ async function finishMatch(){
       var ss=state.teamStatsBySet[sn]||{};
       Object.keys(ss).forEach(function(t){ if(ss[t]>0) re.push({partido_id:state.partidoId,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
     });
-    await db.saveStats(rj,re);
+    await db.saveStats(state.partidoId,rj,re);
   } catch(e){ showToast('\u26a0\ufe0f Stats sin guardar (sin conexión)'); }
-
-  // 2. Marcar como completado (intento aparte para que no dependa de las stats)
+  // 2. Marcar como completado
   try{ await db.updateResult(state.partidoId,state.setsUs,state.setsThem); }catch(e){}
-
-  // 3. Actualizar estado local SIEMPRE
+  // 3. Estado local SIEMPRE
   var i=allP.findIndex(function(x){return x.id===state.partidoId;});
   if(i>=0){ allP[i].sets_ganados=state.setsUs; allP[i].sets_perdidos=state.setsThem; allP[i].completado=true; }
-  clearLocal(); showToast('\u2705 Partido finalizado');
-
+  clearLocal();
   renderPartidos(); renderEquipos(); renderPlaya();
+}
+
+// Finalizar y volver directamente al menú
+async function finishToHub(){
+  await saveMatchResult();
+  showToast('\u2705 Partido finalizado');
+  playaState=null;
+  switchScreen('hub');
+}
+
+// Finalizar y mostrar el resumen del partido
+async function finishMatch(){
+  await saveMatchResult();
+  showToast('\u2705 Partido finalizado');
   var finishedId = state.partidoId;
-  openConsulta('partido');
+  openConsulta('partido', null, true);
   setTimeout(async function(){
     var sel=document.getElementById('c-partido-sel');
     if(sel && finishedId){ sel.value=finishedId; await onConsultaPartidoChange(); }
@@ -1872,11 +1953,16 @@ function showSetStats(setNum, onContinue, continueLabel){
 // ══════════════════════════════════════
 var consultaMode = 'partido';
 var consultaModalidad = null;
+var singleMatchView = false;
 
-function openConsulta(mode, modalidad){
+function openConsulta(mode, modalidad, single){
   consultaMode = mode || 'partido';
   consultaModalidad = modalidad || null;
+  singleMatchView = !!single;
   document.getElementById('consulta-export-btn').style.display = 'none';
+  // Mostrar/ocultar la barra de modo según si es vista de un solo partido
+  document.getElementById('consulta-mode-bar').style.display = singleMatchView ? 'none' : 'flex';
+  document.getElementById('consulta-sub').textContent = singleMatchView ? 'Resumen del partido' : 'Estadísticas';
   setConsultaMode(consultaMode);
   switchScreen('consulta');
 }
@@ -1885,7 +1971,7 @@ function setConsultaMode(mode){
   consultaMode = mode;
   document.getElementById('cmode-partido').className  = 'abt'+(mode==='partido'?' b':'');
   document.getElementById('cmode-jugadora').className = 'abt'+(mode==='jugadora'?' b':'');
-  document.getElementById('consulta-sub').textContent = mode==='partido'?'Por partido':'Por jugadora';
+  if(!singleMatchView) document.getElementById('consulta-sub').textContent = mode==='partido'?'Por partido':'Por jugadora';
   renderConsultaFilters();
 }
 
@@ -1893,6 +1979,15 @@ function renderConsultaFilters(){
   var el = document.getElementById('consulta-filters');
   var body = document.getElementById('consulta-body');
   body.innerHTML = '';
+  // En vista de un solo partido no mostramos el selector de partidos
+  if(singleMatchView){
+    var optsP='<option value="">—</option>';
+    allP.forEach(function(p){ optsP+='<option value="'+p.id+'">'+p.rival+'</option>'; });
+    el.innerHTML = '<div id="c-set-row" style="display:none;margin-top:2px" class="ig"><label>Ver</label>'
+      +'<select class="field" id="c-set-sel" onchange="renderConsultaPartido()"><option value="all">Partido completo</option></select></div>'
+      +'<select id="c-partido-sel" style="display:none">'+optsP+'</select>';
+    return;
+  }
   if(consultaMode === 'partido'){
     // Selector de partido
     var html = '<div class="ig"><label>Selecciona partido</label>'
@@ -1964,6 +2059,72 @@ async function onConsultaPartidoChange(){
   }catch(e){ document.getElementById('consulta-body').innerHTML='<p style="color:var(--accent2);padding:20px">Error: '+e.message+'</p>'; }
 }
 
+// Construye arrays de stats (formato BD) desde el estado en memoria
+function buildStatsFromState(){
+  var sj=[], se=[];
+  Object.keys(state.stats||{}).forEach(function(jid){
+    var s=state.stats[jid]||{};
+    Object.keys(s).forEach(function(t){ if(s[t]>0) sj.push({jugadora_id:jid,tipo:t,cantidad:s[t],set_num:null}); });
+  });
+  Object.keys(state.statsBySet||{}).forEach(function(sn){
+    var setObj=state.statsBySet[sn]||{};
+    Object.keys(setObj).forEach(function(jid){
+      var ss=setObj[jid]||{};
+      Object.keys(ss).forEach(function(t){ if(ss[t]>0) sj.push({jugadora_id:jid,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
+    });
+  });
+  Object.keys(state.teamStats||{}).forEach(function(t){ if(state.teamStats[t]>0) se.push({tipo:t,cantidad:state.teamStats[t],set_num:null}); });
+  Object.keys(state.teamStatsBySet||{}).forEach(function(sn){
+    var ts2=state.teamStatsBySet[sn]||{};
+    Object.keys(ts2).forEach(function(t){ if(ts2[t]>0) se.push({tipo:t,cantidad:ts2[t],set_num:parseInt(sn)}); });
+  });
+  return {sj:sj, se:se};
+}
+
+// Bloque de estadística racionalizado: Puntos + desglose, Errores + desglose, Saques + %
+function statBlockHTML(s, opts){
+  opts = opts||{};
+  var rivalErr = opts.rivalErr||0;
+  var genErr = opts.genErr||0;
+  var pts=(s.kill||0)+(s.ace||0)+(s.block||0)+(s.tip||0)+rivalErr;
+  var err=(s.serve_error||0)+(s.reception_serve_error||0)+(s.reception_error||0)+(s.attack_error||0)+(s.net_fault||0)+(s.blockout||0)+genErr;
+  var nSaq=s.serve_count||0;
+  var pctAce=nSaq>0?Math.round((s.ace||0)/nSaq*100):0;
+  var pctErr=nSaq>0?Math.round((s.serve_error||0)/nSaq*100):0;
+  function chip(val,label,color){
+    return '<div style="text-align:center;min-width:0"><div style="font-family:\'Bebas Neue\',sans-serif;font-size:18px;line-height:1;color:'+(color||'var(--text)')+'">'+val+'</div><div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-top:1px">'+label+'</div></div>';
+  }
+  var h='';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+    +'<div style="background:rgba(46,204,113,0.12);border-radius:8px;padding:5px 8px;text-align:center;min-width:54px">'
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;line-height:1;color:var(--green)">'+pts+'</div>'
+    +'<div style="font-size:8px;color:var(--green);text-transform:uppercase;letter-spacing:1px">Puntos</div></div>'
+    +'<div style="flex:1;display:grid;grid-template-columns:repeat('+(rivalErr?5:4)+',1fr);gap:3px">'
+    +chip(s.kill||0,'Rem','var(--accent)')+chip(s.ace||0,'Saq','var(--blue)')
+    +chip(s.block||0,'Bloq','var(--blue)')+chip(s.tip||0,'Finta','var(--purple)')
+    +(rivalErr?chip(rivalErr,'F.Riv','var(--green)'):'')
+    +'</div></div>';
+  h+='<div style="display:flex;align-items:center;gap:8px'+(nSaq>0?';margin-bottom:6px':'')+'">'
+    +'<div style="background:rgba(232,55,74,0.12);border-radius:8px;padding:5px 8px;text-align:center;min-width:54px">'
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;line-height:1;color:var(--accent2)">'+err+'</div>'
+    +'<div style="font-size:8px;color:var(--accent2);text-transform:uppercase;letter-spacing:1px">Errores</div></div>'
+    +'<div style="flex:1;display:grid;grid-template-columns:repeat('+(genErr?5:4)+',1fr);gap:3px">'
+    +chip(s.serve_error||0,'Saque','var(--accent2)')
+    +chip((s.reception_serve_error||0)+(s.reception_error||0),'Recep','var(--accent2)')
+    +chip(s.attack_error||0,'Remate','var(--accent2)')
+    +chip((s.net_fault||0)+(s.blockout||0),'Red/Out','var(--accent2)')
+    +(genErr?chip(genErr,'Gen','var(--muted)'):'')
+    +'</div></div>';
+  if(nSaq>0){
+    h+='<div style="background:var(--surface2);border-radius:8px;padding:6px 10px;font-size:11px;color:var(--muted);display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
+      +'<span>🏐 Saques: <b style="color:var(--text);font-size:13px">'+nSaq+'</b></span>'
+      +'<span>Directos: <b style="color:var(--green)">'+pctAce+'%</b></span>'
+      +'<span>Errores: <b style="color:var(--accent2)">'+pctErr+'%</b></span>'
+      +'</div>';
+  }
+  return h;
+}
+
 async function renderConsultaPartido(){
   var pid = document.getElementById('c-partido-sel').value; if(!pid) return;
   var setFilter = document.getElementById('c-set-sel') ? document.getElementById('c-set-sel').value : 'all';
@@ -1974,27 +2135,16 @@ async function renderConsultaPartido(){
     var isLive = state.partidoId===pid && !(p && p.completado);
     var sj, se;
     if(isLive){
-      // Partido en curso: construir desde el estado en vivo
-      sj=[]; se=[];
-      Object.keys(state.stats).forEach(function(jid){
-        var s=state.stats[jid]||{};
-        Object.keys(s).forEach(function(t){ if(s[t]>0) sj.push({jugadora_id:jid,tipo:t,cantidad:s[t],set_num:null}); });
-      });
-      Object.keys(state.statsBySet).forEach(function(sn){
-        var setObj=state.statsBySet[sn]||{};
-        Object.keys(setObj).forEach(function(jid){
-          var ss=setObj[jid]||{};
-          Object.keys(ss).forEach(function(t){ if(ss[t]>0) sj.push({jugadora_id:jid,tipo:t,cantidad:ss[t],set_num:parseInt(sn)}); });
-        });
-      });
-      Object.keys(state.teamStats).forEach(function(t){ if(state.teamStats[t]>0) se.push({tipo:t,cantidad:state.teamStats[t],set_num:null}); });
-      Object.keys(state.teamStatsBySet).forEach(function(sn){
-        var ts2=state.teamStatsBySet[sn]||{};
-        Object.keys(ts2).forEach(function(t){ if(ts2[t]>0) se.push({tipo:t,cantidad:ts2[t],set_num:parseInt(sn)}); });
-      });
+      var live = buildStatsFromState();
+      sj = live.sj; se = live.se;
     } else {
       var r = await db.getStatsP(pid);
       sj = r[0]||[]; se = r[1]||[];
+      // Red de seguridad: si la BD está vacía pero tenemos los datos en memoria
+      if(!sj.length && state.partidoId===pid && state.stats && Object.keys(state.stats).length){
+        var live2 = buildStatsFromState();
+        sj = live2.sj; se = live2.se;
+      }
     }
     var co = await db.getConvocatoria(pid);
     var eq = p ? allE.find(function(e){return e.id===p.equipo_id;}) : null;
@@ -2045,25 +2195,19 @@ async function renderConsultaPartido(){
       +'</div>';
 
     // Totales equipo
-    var T={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0};
+    var T={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0};
     jugadoras.forEach(function(j){ Object.keys(T).forEach(function(k){ T[k]+=(ts[j.jugadora_id]||{})[k]||0; }); });
-    var pts=T.kill+T.ace+T.block+T.tip+(tts.rival_error||0);
-    var err=T.serve_error+T.reception_serve_error+T.reception_error+T.attack_error+T.net_fault+T.blockout+(tts.general_error||0);
     html += '<div class="stitle" style="padding:0 0 6px">Equipo</div>'
-      +'<div class="tgrid" style="margin-bottom:14px">'
-      +'<div class="tbox g"><div class="tv">'+pts+'</div><div class="tk">Puntos</div></div>'
-      +'<div class="tbox r"><div class="tv">'+err+'</div><div class="tk">Errores</div></div>'
-      +'<div class="tbox a"><div class="tv">'+T.kill+'</div><div class="tk">Remates</div></div>'
-      +'<div class="tbox b"><div class="tv">'+T.ace+'</div><div class="tk">Saques</div></div>'
-      +'</div>';
+      +'<div class="stcard" style="margin-bottom:14px">'
+      + statBlockHTML(T, {rivalErr:tts.rival_error||0, genErr:tts.general_error||0})
+      + '</div>';
 
     // Por jugadora
     html += '<div class="stitle" style="padding:0 0 6px">Jugadoras</div>';
     jugadoras.map(function(j){
       var s=ts[j.jugadora_id]||{};
       var jpts=(s.kill||0)+(s.ace||0)+(s.block||0)+(s.tip||0);
-      var jerr=(s.serve_error||0)+(s.reception_serve_error||0)+(s.reception_error||0)+(s.attack_error||0)+(s.net_fault||0)+(s.blockout||0);
-      return {j:j,s:s,pts:jpts,err:jerr};
+      return {j:j,s:s,pts:jpts};
     }).sort(function(a,b){return b.pts-a.pts;}).forEach(function(item){
       var j=item.j,s=item.s;
       html += '<div class="stcard">'
@@ -2072,14 +2216,8 @@ async function renderConsultaPartido(){
         +'<span style="font-weight:700;font-size:14px">'+j.nombre+'</span>'
         +(j.alias&&j.alias!==j.nombre?'<span style="font-size:11px;color:var(--muted)">('+j.alias+')</span>':'')
         +posBadge(j.posicion,true)+'</div>'
-        +'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">'
-        +'<div class="tbox g"><div class="tv" style="font-size:16px">'+item.pts+'</div><div class="tk">Pts</div></div>'
-        +'<div class="tbox a"><div class="tv" style="font-size:16px">'+(s.kill||0)+'</div><div class="tk">Rem</div></div>'
-        +'<div class="tbox b"><div class="tv" style="font-size:16px">'+(s.ace||0)+'</div><div class="tk">Saq</div></div>'
-        +'<div class="tbox"><div class="tv" style="font-size:16px;color:var(--blue)">'+(s.block||0)+'</div><div class="tk">Bloq</div></div>'
-        +'<div class="tbox r"><div class="tv" style="font-size:16px">'+item.err+'</div><div class="tk">Err</div></div>'
-        +'<div class="tbox r"><div class="tv" style="font-size:16px">'+(s.serve_error||0)+'</div><div class="tk">F.Saq</div></div>'
-        +'</div></div>';
+        + statBlockHTML(s, {})
+        +'</div>';
     });
 
     // Sets si hay historial en BD (filas con set_num > 0)
@@ -2214,13 +2352,11 @@ async function renderConsultaJugadora(){
 
 // También acceder desde el botón 📊 Stats de un partido en la lista
 async function viewStatsPartido(pid){
-  document.getElementById('c-partido-sel') && (document.getElementById('c-partido-sel').value = pid);
-  openConsulta('partido');
-  // Trigger load after render
+  openConsulta('partido', null, true);
   setTimeout(async function(){
     var sel = document.getElementById('c-partido-sel');
     if(sel){ sel.value = pid; await onConsultaPartidoChange(); }
-  }, 50);
+  }, 60);
 }
 
 function exportStats(){
@@ -2334,33 +2470,35 @@ function renderPlaya(){
   partidos.forEach(function(p){
     var eq = allE.find(function(e){return e.id===p.equipo_id;});
     var fecha = new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'});
-    var res = p.completado?(p.sets_ganados+'–'+p.sets_perdidos):'En curso';
+    var res = p.completado?(p.sets_ganados+'–'+p.sets_perdidos):(matchStatus(p)==='curso'?'En curso':'—');
     var col = !p.completado?'var(--accent)':p.sets_ganados>p.sets_perdidos?'var(--green)':'var(--accent2)';
+    var estado=statusBadge(p);
     var c = document.createElement('div'); c.className='card';
     c.innerHTML='<div style="display:flex;align-items:center;gap:10px">'
       +'<div style="flex:1"><div class="card-title">🏖️ vs '+p.rival+'</div>'
-      +'<div class="card-sub">'+(eq?eq.nombre:'—')+' · '+fecha+(p.competicion?' · '+p.competicion:'')+'</div></div>'
+      +'<div class="card-sub">'+(eq?eq.nombre:'—')+' · '+fecha+(p.competicion?' · '+p.competicion:'')+'</div>'
+      +'<div style="margin-top:3px">'+estado+'</div></div>'
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;color:'+col+'">'+res+'</div></div>'
       +'<div class="card-actions">'
       +'<button class="abt a" data-a="epp" data-id="'+p.id+'">✏️ Editar</button>'
-      +(!p.completado?'<button class="abt g" data-a="spp" data-id="'+p.id+'">⚡ Iniciar</button>':'')
+      +(!p.completado?'<button class="abt g" data-a="spp" data-id="'+p.id+'">⚡ '+(matchStatus(p)==='curso'?'Continuar':'Iniciar')+'</button>':'')
       +'<button class="abt b" data-a="stpp" data-id="'+p.id+'">📊 Stats</button>'
       +'</div>';
     el.appendChild(c);
   });
-  el.addEventListener('click',function(ev){
+  el.onclick=function(ev){
     var b=ev.target.closest('[data-a]'); if(!b) return;
     if(b.dataset.a==='epp')  openModalPartidoPlaya(b.dataset.id);
     if(b.dataset.a==='spp')  startPartidoPlaya(b.dataset.id);
     if(b.dataset.a==='stpp') viewStatsPartido(b.dataset.id);
-  },{once:false});
+  };
 }
 
 // ── Modal partido playa ──
 function openModalPartidoPlaya(id){
   editPlayaId = id||null;
   document.getElementById('mpp-title').textContent = id?'🏖️ EDITAR PARTIDO PLAYA':'🏖️ NUEVO PARTIDO PLAYA';
-  document.getElementById('btn-iniciar-playa').style.display = id?'flex':'none';
+  document.getElementById('btn-iniciar-playa').style.display = 'flex';
   document.getElementById('btn-del-playa').style.display = id?'flex':'none';
   var today = new Date().toISOString().split('T')[0];
   // Populate equipo select — only playa teams
@@ -2542,6 +2680,7 @@ async function startPartidoPlaya(pid){
     conv.forEach(function(j){state.statsBySet[1][j.jugadora_id]={ace:0,kill:0,block:0,tip:0,serve_error:0,reception_serve_error:0,reception_error:0,attack_error:0,net_fault:0,blockout:0,serve_count:0,serve_after_timeout:0};});
     state.teamStatsBySet[1]={rival_error:0,general_error:0};
 
+    markStarted(pid);
     saveLocal();
     updateMatchUI();
     switchScreen('match');
@@ -2566,14 +2705,37 @@ function serveStartThem(){
 
 function serveStartUs(){
   document.getElementById('modal-serve-start').style.display='none';
-  // Elegir cuál jugadora saca
-  askServeWho(function(jid){
-    state.serveTeam=null; state.currentServer=jid;
-    if(state.modalidad==='playa') playaState && (playaState.lastServer=jid);
+  chooseOurServer();
+}
+
+// Elige nuestra sacadora: la 1ª vez del partido pregunta; después alterna automáticamente
+function chooseOurServer(){
+  state.serveTeam = null;
+  if(!state.serverChosen){
+    // Primera selección del partido → preguntar
+    state.currentServer = null;
+    document.getElementById('serve-us').classList.remove('active');
+    document.getElementById('serve-them').classList.remove('active');
+    askServeWho(function(jid){
+      state.currentServer = jid;
+      state.lastServer = jid;
+      state.serverChosen = true;
+      document.getElementById('serve-us').classList.add('active');
+      document.getElementById('serve-them').classList.remove('active');
+      updateServerRow(); updateStatPanel(); saveLocal();
+    });
+    updateServerRow(); updateStatPanel();
+  } else {
+    // Ya se eligió antes → alternar a la otra jugadora de la pareja actual
+    var prev = state.lastServer;
+    var inConv = conv.some(function(j){ return j.jugadora_id===prev; });
+    var otra = inConv ? conv.find(function(j){ return j.jugadora_id!==prev; }) : conv[0];
+    state.currentServer = otra ? otra.jugadora_id : (conv[0] && conv[0].jugadora_id);
+    state.lastServer = state.currentServer;
     document.getElementById('serve-us').classList.add('active');
     document.getElementById('serve-them').classList.remove('active');
     updateServerRow(); updateStatPanel(); saveLocal();
-  });
+  }
 }
 
 function askServeWho(callback){
@@ -2653,6 +2815,8 @@ function continuarSetPlaya(){
   // Update state for new set
   state.setNum=sn; state.scoreUs=0; state.scoreThem=0; state.matchOver=false;
   state.activePlayer=null; state.pinnedPlayer=null; state.serveTeam=null; state.currentServer=null;
+  // Nueva pareja cada set → volver a preguntar quién saca la primera vez
+  state.serverChosen=false; state.lastServer=null;
   state.statsBySet[sn]={};
   state.teamStatsBySet[sn]={rival_error:0,general_error:0};
   conv = getCurrentPareja();
@@ -2664,9 +2828,12 @@ function continuarSetPlaya(){
   Object.keys(META).forEach(function(k){var el=document.getElementById('cnt-'+k);if(el)el.textContent='0';});
   document.getElementById('serve-us').classList.remove('active');
   document.getElementById('serve-them').classList.remove('active');
+  // Limpieza: cerrar modal de fin de set, quitar resumen, volver a la pista
+  document.getElementById('modal-set-end').style.display='none';
+  var cb=document.getElementById('set-continue-btn'); if(cb) cb.remove();
   var par=playaState.parejaSets[sn];
-  saveLocal(); updateMatchUI();
-  showToast('🏖️ Set '+sn+' — Pareja '+par);
+  saveLocal(); updateMatchUI(); switchScreen('match');
+  showToast('🏖️ Set '+sn+' — Pareja '+(par==='custom'?'libre':par));
   askServeStart();
 }
 
@@ -2691,21 +2858,23 @@ function endSetPlaya(won){
   document.getElementById('set-end-title').textContent=won?'🏖️ ¡SET GANADO!':'💪 Set perdido';
   document.getElementById('set-end-body').textContent=state.scoreUs+'–'+state.scoreThem+' · Sets: '+state.setsUs+'–'+state.setsThem;
   document.getElementById('set-end-next').style.display=over?'none':'flex';
-  document.getElementById('set-end-finish').textContent=over?'🎉 VER RESUMEN':'Terminar partido';
   document.getElementById('modal-set-end').style.display='flex';
   state.matchOver=true;
-  document.getElementById('set-end-stats').onclick=function(){
-    document.getElementById('modal-set-end').style.display='none';
-    showSetStats(setJustEnded, function(){ document.getElementById('modal-set-end').style.display='flex'; document.getElementById('stats-back-btn').onclick=showMatch; }, '← Volver');
-  };
-  document.getElementById('set-end-next').onclick=function(){
-    document.getElementById('modal-set-end').style.display='none';
-    playaNextSet();
-  };
-  document.getElementById('set-end-finish').onclick=function(){
-    document.getElementById('modal-set-end').style.display='none';
-    finishMatch();
-  };
+  if(over){
+    document.getElementById('set-end-stats').textContent='📊 Ver resumen del partido';
+    document.getElementById('set-end-stats').onclick=function(){ document.getElementById('modal-set-end').style.display='none'; finishMatch(); };
+    document.getElementById('set-end-finish').textContent='🏠 Finalizar y volver al menú';
+    document.getElementById('set-end-finish').onclick=function(){ document.getElementById('modal-set-end').style.display='none'; finishToHub(); };
+  } else {
+    document.getElementById('set-end-stats').textContent='📊 Estadísticas del set';
+    document.getElementById('set-end-stats').onclick=function(){
+      document.getElementById('modal-set-end').style.display='none';
+      showSetStats(setJustEnded, function(){ document.getElementById('modal-set-end').style.display='flex'; document.getElementById('stats-back-btn').onclick=showMatch; }, '← Volver');
+    };
+    document.getElementById('set-end-next').onclick=function(){ document.getElementById('modal-set-end').style.display='none'; playaNextSet(); };
+    document.getElementById('set-end-finish').textContent='🏠 Terminar y salir';
+    document.getElementById('set-end-finish').onclick=function(){ document.getElementById('modal-set-end').style.display='none'; finishToHub(); };
+  }
 }
 
 setupScoreLongPress();
